@@ -1,0 +1,6 @@
+name: 'cgp_simulated'
+N: 100
+P: 3
+process_length: 500
+burn_in: 1000
+noise_factor: 1

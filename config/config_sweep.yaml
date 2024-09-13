@@ -1,0 +1,12 @@
+hydra:
+  sweep:
+    method: random
+    metric: loss
+    num_samples: 10
+
+seed: 42
+
+defaults:
+  - data: cgp
+  - model: adacgp
+  - graph: kr

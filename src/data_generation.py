@@ -17,7 +17,7 @@ def generate_data(cfg):
     process_length = cfg.data.process_length
     burn_in = cfg.data.burn_in
     noise_factor = cfg.data.noise_factor
-    graph_cfg = cfg.data.graph_cfg
+    graph_cfg = cfg.graph
 
     graph_filters_flat, weight_matrix, filter_coefficients = generate_graph_filters(N, P, **graph_cfg)
 
@@ -42,4 +42,6 @@ def generate_data(cfg):
     data = np.array(data)[burn_in:]
     target = np.array(target)[burn_in:]
 
-    return torch.tensor(data), torch.tensor(target), torch.tensor(graph_filters_flat), torch.tensor(weight_matrix), torch.tensor(filter_coefficients)
+    return torch.tensor(data, dtype=torch.float32), torch.tensor(target, dtype=torch.float32), \
+        torch.tensor(graph_filters_flat, dtype=torch.float32), torch.tensor(weight_matrix, dtype=torch.float32), \
+            torch.tensor(filter_coefficients, dtype=torch.float32)

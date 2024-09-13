@@ -49,7 +49,7 @@ def generate_sbm_graph(n=1000, num_clusters=10, **kwargs):
     matrix = normalize_matrix(matrix, 1.1)
     return matrix
 
-def generate_er_graph(n=1000, p=0.04, **kwargs):
+def generate_er_graph(n=1000, **kwargs):
     """Erdős-Renyi graph with n nodes and edge probability p
 
     Args:
