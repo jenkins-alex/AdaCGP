@@ -1,12 +1,19 @@
-hydra:
-  sweep:
-    method: random
-    metric: loss
-    num_samples: 10
-
 seed: 42
 
+hydra:
+  mode: MULTIRUN
+  sweep:
+    dir: logs/${model.name}/${data.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: seed_${seed}/N_${data.N}
+
+  sweeper:
+    params:
+      seed: 42, 43, 44
+      data.N: 100, 200, 300
+
 defaults:
+  - _self_
   - data: cgp
   - model: adacgp
   - graph: kr
+  - override hydra/sweeper: basic
