@@ -8,6 +8,8 @@ from omegaconf import OmegaConf, DictConfig
 from src.data_generation import generate_data
 from src.utils import set_seed
 from src.models.adaptive.AdaCGP import AdaCGP
+from src.plotting import save_figures
+from src.eval_metrics import save_results
 
 def get_model(name):
     models = {
@@ -19,8 +21,7 @@ def get_model(name):
 
 def get_save_path():
     sweep = hydra.core.hydra_config.HydraConfig.get().sweep
-    path = os.path.join(sweep.dir, sweep.subdir)
-    return path
+    return sweep.dir, sweep.subdir
 
 @hydra.main(version_base=None, config_path="config", config_name="config_sweep")
 def main(cfg: DictConfig):
@@ -29,7 +30,7 @@ def main(cfg: DictConfig):
     # set params
     set_seed(cfg.seed)
     device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
-    
+
     # generate data and move to device
     X, y, graph_filters_flat, weight_matrix, filter_coefficients = [d.to(device) for d in generate_data(cfg)]
 
@@ -40,11 +41,10 @@ def main(cfg: DictConfig):
     results = model.run(X, y, weight_matrix, filter_coefficients, graph_filters_flat)
 
     # Save results
-    fpath = get_save_path()
-    fpath = os.path.join(fpath, 'results.pkl')
-    with open(fpath, 'wb') as f:
-        pickle.dump(results, f)
-    print(f"Results saved to {fpath}")
+    dir, subdir = get_save_path()
+    save_path = os.path.join(dir, subdir)
+    save_results(cfg.model.hyperparams.patience, results, save_path)
+    save_figures(results, weight_matrix, save_path)
 
 if __name__ == "__main__":
     main()

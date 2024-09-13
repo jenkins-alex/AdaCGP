@@ -47,7 +47,7 @@ class AdaCGP:
         if hasattr(self, private_name):
             return getattr(self, private_name)
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
-        
+    
     def run(self, X, y, weight_matrix=None, filter_coefficients=None, graph_filter_matrix=None):
         """Run the AdaCGP model
 
@@ -61,15 +61,16 @@ class AdaCGP:
 
         results = {
             'pred_error': [], 'pred_error_from_h': [], 'filter_error': [],
-            'w_error': [], 'coeff_errors': [], 'converged_status': [],
-            'matrices': [], 'p_miss': [], 'p_false_alarm': [], 'psi_losses': [],
+            'w_error': [], 'coeff_errors': [], 'first_alg_converged_status': [],
+            'second_alg_converged_status': [], 'matrices': [], 'p_miss': [], 'p_false_alarm': [], 'psi_losses': [],
             'percentage_correct_elements': [], 'num_non_zero_elements': [],
             'prob_miss': [], 'prob_false_alarm': [], 'pred_error_recursive_moving_average': [1],
             'pred_error_recursive_moving_average_h': [1]
         }
  
         switch_algorithm = False
-        converged = False
+        first_alg_converged = False
+        second_alg_converged = False
         lowest_error = 1e10
         psi_loss = 0.0
         process_length = X.shape[0]
@@ -87,16 +88,36 @@ class AdaCGP:
                         switch_algorithm = (t % self._alternate_mod == 0)
             
                     ma_error = results['pred_error_recursive_moving_average'][-1]
-                    if ma_error < lowest_error:
-                        lowest_error = ma_error
-                        patience_left = self._patience
+
+                    ##################################
+                    ######### CHECK CONVERGENCE ######
+                    ##################################
+                    if not second_alg_converged:
+                        if lowest_error != 0:
+                            relative_improvement = (lowest_error - ma_error) / lowest_error
+                        else:
+                            relative_improvement = float('inf') if ma_error < lowest_error else 0
+
+                        if relative_improvement > self._min_delta_percent:
+                            lowest_error = ma_error
+                            patience_left = self._patience
+                        else:
+                            patience_left -= 1
+
+                        if patience_left == 0:
+                            if not first_alg_converged:
+                                first_alg_converged = True
+                                if not self._alternate:
+                                    switch_algorithm = True
+                                patience_left = self._burn_in_debiasing
+                            else:
+                                second_alg_converged = True
+                                patience_left = self._patience
                     else:
                         patience_left -= 1
-                    if patience_left == 0:
-                        converged = True
-                        if not self._alternate:
-                            switch_algorithm = True
-            
+                        if patience_left == 0:
+                            break
+
                     # Psi loss update
                     psi_loss = 0.5 * (self._lambda * psi_loss + torch.norm(yt - torch.matmul(self.Psi, xPt))**2)
                     results['psi_losses'].append(psi_loss.item())
@@ -140,7 +161,7 @@ class AdaCGP:
                         psi_stepsize = 2 / (eigs[0].item())
                         A = self.eye_P * psi_stepsize
                         for p in range(self._P):
-                            A[p, p] /= (torch.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + 1e-6)
+                            A[p, p] /= (torch.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + self._epsilon)
             
                         if self.use_armijo and (t > self._warm_up_steps):
                             # Line search
@@ -192,7 +213,7 @@ class AdaCGP:
                                 gradient_function_wstep2_lms,
                                 update_function_wstep2_lms,
                                 self.W.flatten(),
-                                step_init=0.01,
+                                step_init=self._w_stepsize,
                                 beta=0.9,
                                 args=(self.Psi.clone(), mus_pt, self._gamma, self.N, self._P),
                                 max_iter=10
@@ -216,7 +237,7 @@ class AdaCGP:
             
                         self.R0 = self._lambda * self.R0 + torch.matmul(xPt, xPt.T)
                         self.P0 = self._lambda * self.P0 + torch.matmul(yt, xPt.T)
-            
+
                         # Compute mus
                         mu_scales = []
                         Q_unpacked = get_each_graph_filter(self.Q, self.N, self._P)
@@ -242,11 +263,10 @@ class AdaCGP:
                         psi_stepsize = 2 / (eigs[0].item())
                         A = self.eye_P * psi_stepsize
                         for p in range(self._P):
-                            A[p, p] /= (torch.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + 1e-6)
+                            A[p, p] /= (torch.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + self._epsilon)
             
                         if self._use_armijo and (t > self._warm_up_steps):
                             Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
-                            direction_unpacked = get_each_graph_filter(G, self.N, self._P)
                             for p in range(0, self._P):
                                 alpha = wolfe_line_search(
                                     objective_function_psi_debias,
@@ -259,7 +279,7 @@ class AdaCGP:
                                     max_iter=10
                                 )
                                 A[p, p] = alpha
-            
+
                         ######### UPDATE PARAM #########
                         self.Psi = self.Psi - torch.matmul(G, torch.kron(A, self.eye_N))
                         Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
@@ -269,10 +289,12 @@ class AdaCGP:
                         self.W_neg = self.W.clone()
                         self.W_neg[self.W_neg > 0] = 0
                         self.W_neg *= -1
-            
+                        pbar.set_postfix({'MA y error': ma_error, 'Step': psi_stepsize, 'Converged': switch_algorithm})
+
                         ############################################
                         ########### COMPUTE FILTER COEFS ###########
                         ############################################
+
                         Xpt = xPt.view(self._P, self.N)
                         Ys = []
                         for i in range(1, self._P + 1):
@@ -292,14 +314,14 @@ class AdaCGP:
                             self.C = self._lambda * self.C + torch.matmul(Ys.T, Ys)
                             self.u = self._lambda * self.u + torch.matmul(Ys.T, yt)
                             h_g = torch.matmul(self.C, self.h) - self.u
-                                
+
                         ######## ARMIJO STEPSIZE #######
                         alpha = wolfe_line_search(
                             objective_function_h_lms,
                             gradient_function_h_lms,
                             update_function_h_lms,
                             self.h.flatten(),
-                            step_init=0.01,
+                            step_init=self._h_stepsize,
                             beta=0.1,
                             args=(Ys, yt, self._lambda, self.C, self.u, self._instant_h, nu_t, self._epsilon),
                             max_iter=10
@@ -312,7 +334,6 @@ class AdaCGP:
                         self.h[0] = 0
                         self.h[1] = 1
                         d_hat_h = torch.matmul(Ys, self.h)
-                        pbar.set_postfix({'MA y error': ma_error, 'Step': psi_stepsize, 'Converged': switch_algorithm})
 
                     ###################################
                     ######### COMPUTE RESULTS #########
@@ -349,7 +370,7 @@ class AdaCGP:
                         norm_w_error = torch.norm(weight_matrix_error)**2 / torch.norm(weight_matrix)**2
                         results['w_error'].append(norm_w_error.item())
                         results['num_non_zero_elements'].append((self.W != 0).sum().item())
-                
+
                         # compute the percentage of elements correctly identified in W
                         total = (weight_matrix != 0).sum()
                         frac = ((self.W != 0) * (weight_matrix != 0)).sum() / total
@@ -366,7 +387,8 @@ class AdaCGP:
                         results['coeff_errors'].append(norm_coeff_error.item())
                 
                     # Store the convergence status
-                    results['converged_status'].append(converged)
+                    results['first_alg_converged_status'].append(first_alg_converged)
+                    results['second_alg_converged_status'].append(second_alg_converged)
                     results['matrices'].append(self.W.cpu().numpy())
         return results
 

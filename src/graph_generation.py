@@ -136,5 +136,20 @@ def generate_random_graph(n, **kwargs):
         matrix[u, v] = d['weight']
     matrix = normalize_matrix(matrix, 1.5)
     return matrix
+
+def create_random_matrix_as_in_paper(N):
+    # as in Methods of Adaptive Signal Processing on Graphs Using Vertex-Time Autoregressive Models
+    W = np.random.normal(0, 1, size=(N, N))
+
+    # threshold weight matrix to between 0.3 and 0.7 of max weight
+    max_weight = np.max(np.abs(W))
+    W[np.abs(W)>0.7*max_weight] = 0
+    W[np.abs(W)<0.3*max_weight] = 0
+    
+    # calculate the eigenvalues of W and normalise by 1.5x largest eigenvalue for stable process
+    w, _ = np.linalg.eig(W)
+    max_eig = np.max(np.abs(w.real))
+    W /= 1.5 * max_eig
+    return W
     
     

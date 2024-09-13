@@ -4,12 +4,16 @@ hydra:
   mode: MULTIRUN
   sweep:
     dir: logs/${model.name}/${data.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
-    subdir: seed_${seed}/N_${data.N}
+    subdir: graph_${graph.graph_type}/N_${data.N}/seed_${seed}
 
   sweeper:
     params:
-      seed: 42, 43, 44
-      data.N: 100, 200, 300
+      seed: 42
+      data.N: 25, 100, 500, 1000
+      graph: random, kr, sbm, er, pl
+    
+  launcher:
+    n_jobs: 5
 
 defaults:
   - _self_
@@ -17,3 +21,4 @@ defaults:
   - model: adacgp
   - graph: kr
   - override hydra/sweeper: basic
+  - override hydra/launcher: joblib
