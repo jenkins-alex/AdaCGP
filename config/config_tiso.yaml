@@ -4,8 +4,9 @@ hydra:
     dir: logs/${model.name}/${data.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
 
 seed: 42
+device: 'cpu'
 defaults:
   - _self_
   - data: cgp
-  - model: adacgp
-  - graph: pl
+  - model: tiso
+  - graph: sbm

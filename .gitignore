@@ -1,1 +1,8 @@
 logs/*
+launch.json
+settings.json
+figures/*
+*.ipynb_checkpoints/*
+*.pyc
+*.pyo
+*.pyd

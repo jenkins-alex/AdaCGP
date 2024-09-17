@@ -1,6 +1,6 @@
 import numpy as np
 from .graph_generation import generate_er_graph, generate_sbm_graph, \
-    generate_kr_graph, generate_pl_graph, generate_random_graph, create_random_matrix_as_in_paper
+    generate_kr_graph, generate_pl_graph, generate_random_graph
 from scipy import sparse
 
 def get_graph_topology(graph_type, N, max_retries=100, **kwargs):
@@ -22,7 +22,7 @@ def get_graph_topology(graph_type, N, max_retries=100, **kwargs):
         'SBM': generate_sbm_graph,
         'KR': generate_kr_graph,
         'PL': generate_pl_graph,
-        'RANDOM': create_random_matrix_as_in_paper
+        'RANDOM': generate_random_graph
     }
 
     if graph_type not in graph_generators:

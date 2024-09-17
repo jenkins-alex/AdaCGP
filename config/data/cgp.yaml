@@ -1,5 +1,5 @@
 name: 'cgp_simulated'
-N: 25
+N: 100
 P: 3
 process_length: 10000
 burn_in: 1000

@@ -1,0 +1,32 @@
+hydra:
+  mode: MULTIRUN
+  sweep:
+    dir: logs/${model.name}/${data.name}/best_sweep_mc/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${data_seed}
+
+  sweeper:
+    sampler:
+      _target_: optuna.samplers.GridSampler
+    _target_: hydra_plugins.hydra_optuna_sweeper.optuna_sweeper.OptunaSweeper
+    storage: null
+    direction: minimize
+    study_name: AdaCGP
+    n_jobs: 10
+  
+    params:
+      +data_seed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+
+sweep_results_dir: 'logs/AdaCGP/cgp_simulated/2024-09-15/22-12-34'
+optimise_metric: 'nmse_pred_from_h_alg2'
+optimise_direction: 'min'
+dump_results: true
+model:
+  name: 'AdaCGP'
+data:
+  name: 'cgp_simulated'
+
+defaults:
+  - _self_
+  - override hydra/sweeper: optuna
+  - override /hydra/sweeper/sampler: grid
+  - override hydra/launcher: joblib

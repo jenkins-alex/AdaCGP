@@ -9,7 +9,7 @@ hyperparams:
   lambda: 0.99
   nu: 0.01
   ma_alpha: 0.005
-  use_path_1: false
+  use_path_1: true
   instant_h: true
   patience: 200
   burn_in_debiasing: 500
@@ -18,4 +18,7 @@ hyperparams:
   warm_up_steps: 0
   alternate: false
   alternate_mod: 2
-  mus: [0.1, 0.1, 0.1]
+  mus:
+    - 0.1
+    - 0.1
+    - 0.1

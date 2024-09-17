@@ -2,7 +2,8 @@
 import torch
 import numpy as np
 from src.graph_filters import generate_graph_filters
-
+from src.utils import set_seed
+    
 def generate_data(cfg):
     """Generate data from the adaptive graph AR model
 
@@ -20,6 +21,9 @@ def generate_data(cfg):
     graph_cfg = cfg.graph
 
     graph_filters_flat, weight_matrix, filter_coefficients = generate_graph_filters(N, P, **graph_cfg)
+
+    if cfg.get('data_seed', None) is not None:
+        set_seed(cfg.data_seed)
 
     # generate data via AR model, initialise with white noise
     x = np.random.randn(P*N, 1).reshape(P, N)

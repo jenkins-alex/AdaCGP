@@ -27,7 +27,7 @@ class AdaCGP:
         self.W_neg = torch.zeros((N, N), dtype=torch.float32, device=device)
         self.M = int(P * (P + 3) / 2)
         self.h = torch.zeros((self.M, 1), dtype=torch.float32, device=device)
-        self.h[1] = 1
+        # self.h[1] = 1
         self.C = torch.zeros((self.M, self.M), dtype=torch.float32, device=device)
         self.u = torch.zeros((self.M, 1), dtype=torch.float32, device=device)
         self.eye_NxN = torch.eye(N, N, device=device)
@@ -48,7 +48,7 @@ class AdaCGP:
             return getattr(self, private_name)
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
     
-    def run(self, X, y, weight_matrix=None, filter_coefficients=None, graph_filter_matrix=None):
+    def run(self, X, y, weight_matrix=None, filter_coefficients=None, graph_filter_matrix=None, **kwargs):
         """Run the AdaCGP model
 
         Args:
@@ -85,14 +85,47 @@ class AdaCGP:
                     yt = y[t]  # (N, 1)
 
                     if self._alternate:
-                        switch_algorithm = (t % self._alternate_mod == 0)
-            
-                    ma_error = results['pred_error_recursive_moving_average'][-1]
+                        switch_algorithm = (t % 2 == 0)
+
+                    if self._alternate:
+                        ma_error = results['pred_error_recursive_moving_average_h'][-1]
+                    elif not first_alg_converged:
+                        ma_error = results['pred_error_recursive_moving_average'][-1]
+                    else:
+                        ma_error = results['pred_error_recursive_moving_average_h'][-1]
 
                     ##################################
                     ######### CHECK CONVERGENCE ######
                     ##################################
-                    if not second_alg_converged:
+                    if not self._alternate:
+                        if not second_alg_converged:
+                            if lowest_error != 0:
+                                relative_improvement = (lowest_error - ma_error) / lowest_error
+                            else:
+                                relative_improvement = float('inf') if ma_error < lowest_error else 0
+
+                            if relative_improvement > self._min_delta_percent:
+                                lowest_error = ma_error
+                                patience_left = self._patience
+                            else:
+                                patience_left -= 1
+
+                            if patience_left == 0:
+                                if not first_alg_converged:
+                                    first_alg_converged = True
+                                    if not self._alternate:
+                                        switch_algorithm = True
+                                    patience_left = self._burn_in_debiasing
+                                    lowest_error = 1e10
+                                else:
+                                    second_alg_converged = True
+                                    patience_left = self._patience
+                        else:
+                            patience_left -= 1
+                            if patience_left == 0:
+                                break
+                    else:
+                        # alternating
                         if lowest_error != 0:
                             relative_improvement = (lowest_error - ma_error) / lowest_error
                         else:
@@ -102,19 +135,9 @@ class AdaCGP:
                             lowest_error = ma_error
                             patience_left = self._patience
                         else:
-                            patience_left -= 1
+                            if t > self._patience:
+                                patience_left -= 1
 
-                        if patience_left == 0:
-                            if not first_alg_converged:
-                                first_alg_converged = True
-                                if not self._alternate:
-                                    switch_algorithm = True
-                                patience_left = self._burn_in_debiasing
-                            else:
-                                second_alg_converged = True
-                                patience_left = self._patience
-                    else:
-                        patience_left -= 1
                         if patience_left == 0:
                             break
 
@@ -123,7 +146,6 @@ class AdaCGP:
                     results['psi_losses'].append(psi_loss.item())
             
                     if not switch_algorithm:
-
                         ############################################
                         ############## COMPUTE PSI #################
                         ############################################
@@ -291,49 +313,49 @@ class AdaCGP:
                         self.W_neg *= -1
                         pbar.set_postfix({'MA y error': ma_error, 'Step': psi_stepsize, 'Converged': switch_algorithm})
 
-                        ############################################
-                        ########### COMPUTE FILTER COEFS ###########
-                        ############################################
+                    ############################################
+                    ########### COMPUTE FILTER COEFS ###########
+                    ############################################
 
-                        Xpt = xPt.view(self._P, self.N)
-                        Ys = []
-                        for i in range(1, self._P + 1):
-                            x_t_m_i = Xpt[i-1, :]
-                            for j in range(i + 1):
-                                Yij = torch.matmul(torch.matrix_power(self.W, j), x_t_m_i)
-                                Ys.append(Yij)
-                        Ys = torch.stack(Ys, dim=1)  # (N, M)
-                
-                        b = torch.sign(self.h) / (self._epsilon + self.h)
-                        nu_t = self._nu * torch.norm(torch.matmul(Ys.T, Ys), p=float('inf'))
-                
-                        if self._instant_h:
-                            h_e = yt - torch.matmul(Ys, self.h)
-                            h_g = torch.matmul(Ys.T, h_e)
-                        else:
-                            self.C = self._lambda * self.C + torch.matmul(Ys.T, Ys)
-                            self.u = self._lambda * self.u + torch.matmul(Ys.T, yt)
-                            h_g = torch.matmul(self.C, self.h) - self.u
+                    Xpt = xPt.view(self._P, self.N)
+                    Ys = []
+                    for i in range(1, self._P + 1):
+                        x_t_m_i = Xpt[i-1, :]
+                        for j in range(i + 1):
+                            Yij = torch.matmul(torch.matrix_power(self.W, j), x_t_m_i)
+                            Ys.append(Yij)
+                    Ys = torch.stack(Ys, dim=1)  # (N, M)
+            
+                    b = torch.sign(self.h) / (self._epsilon + self.h)
+                    nu_t = self._nu * torch.norm(torch.matmul(Ys.T, Ys), p=float('inf'))
+            
+                    if self._instant_h:
+                        h_e = yt - torch.matmul(Ys, self.h)
+                        h_g = torch.matmul(Ys.T, h_e)
+                    else:
+                        self.C = self._lambda * self.C + torch.matmul(Ys.T, Ys)
+                        self.u = self._lambda * self.u + torch.matmul(Ys.T, yt)
+                        h_g = torch.matmul(self.C, self.h) - self.u
 
-                        ######## ARMIJO STEPSIZE #######
-                        alpha = wolfe_line_search(
-                            objective_function_h_lms,
-                            gradient_function_h_lms,
-                            update_function_h_lms,
-                            self.h.flatten(),
-                            step_init=self._h_stepsize,
-                            beta=0.1,
-                            args=(Ys, yt, self._lambda, self.C, self.u, self._instant_h, nu_t, self._epsilon),
-                            max_iter=10
-                        )
-                        h_stepsize = alpha
-                
-                        ######### UPDATE PARAM #########
-                        dh = h_g + nu_t * b
-                        self.h = self.h + h_stepsize * dh
-                        self.h[0] = 0
-                        self.h[1] = 1
-                        d_hat_h = torch.matmul(Ys, self.h)
+                    ######## ARMIJO STEPSIZE #######
+                    alpha = wolfe_line_search(
+                        objective_function_h_lms,
+                        gradient_function_h_lms,
+                        update_function_h_lms,
+                        self.h.flatten(),
+                        step_init=self._h_stepsize,
+                        beta=0.5,
+                        args=(Ys, yt, self._lambda, self.C, self.u, self._instant_h, nu_t, self._epsilon),
+                        max_iter=10
+                    )
+                    h_stepsize = alpha
+            
+                    ######### UPDATE PARAM #########
+                    dh = h_g + nu_t * b
+                    self.h = self.h + h_stepsize * dh
+                    # self.h[0] = 0
+                    # self.h[1] = 1
+                    d_hat_h = torch.matmul(Ys, self.h)
 
                     ###################################
                     ######### COMPUTE RESULTS #########
@@ -348,16 +370,16 @@ class AdaCGP:
                     results['pred_error_recursive_moving_average'].append(ma_error.item())
             
                     # Compute the prediction error from h
-                    if not switch_algorithm:
-                        results['pred_error_from_h'].append(0)
-                        results['pred_error_recursive_moving_average_h'].append(0)
-                    else:
-                        h_e = yt - d_hat_h
-                        norm_h_error = torch.norm(h_e)**2 / torch.norm(yt)**2
-                        results['pred_error_from_h'].append(norm_h_error.item())
-                        ma_error_h = self._ma_alpha * norm_h_error + (1 - self._ma_alpha) * results['pred_error_recursive_moving_average_h'][-1]
-                        results['pred_error_recursive_moving_average_h'].append(ma_error_h.item())
-            
+                    # if not switch_algorithm:
+                    #     results['pred_error_from_h'].append(0)
+                    #     results['pred_error_recursive_moving_average_h'].append(0)
+                    # else:
+                    h_e = yt - d_hat_h
+                    norm_h_error = torch.norm(h_e)**2 / torch.norm(yt)**2
+                    results['pred_error_from_h'].append(norm_h_error.item())
+                    ma_error_h = self._ma_alpha * norm_h_error + (1 - self._ma_alpha) * results['pred_error_recursive_moving_average_h'][-1]
+                    results['pred_error_recursive_moving_average_h'].append(ma_error_h.item())
+        
                     # Compute squared error of graph filter estimation
                     if graph_filter_matrix is not None:
                         m_error = graph_filter_matrix - self.Psi
@@ -543,6 +565,6 @@ def gradient_function_h_lms(h_flat, Ys, yt, lambda_, C, u, instant_h, nu_t, epsi
  
 def update_function_h_lms(h_flat, dh, h_stepsize, Ys, yt, lambda_, C, u, instant_h, nu_t, epsilon):
     new_param = h_flat + h_stepsize * dh
-    new_param[0] = 0
-    new_param[1] = 1
+    # new_param[0] = 0
+    # new_param[1] = 1
     return new_param

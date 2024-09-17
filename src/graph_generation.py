@@ -14,16 +14,17 @@ def generate_kr_graph(n=1000, xi=3, **kwargs):
         scipy.sparse: adjacency matrix of the generated graph
     """
     weights = np.random.uniform(0.5, 1.0, size=(n, xi))
-    matrix = sp.lil_matrix((n, n))
+    W = np.zeros((n, n))
     
     for i in range(n):
-        matrix[i, i] = -1
+        W[i, i] = -1
         for j in range(1, xi + 1):
-            matrix[i, (i - j) % n] = weights[i, j - 1]
-            matrix[i, (i + j) % n] = weights[i, j - 1]
-    
-    matrix = normalize_matrix(matrix, 1.5)
-    return matrix
+            W[i, (i - j) % n] = weights[i, j - 1]
+            W[i, (i + j) % n] = weights[i, j - 1]
+    w, _ = np.linalg.eig(W)
+    max_eig = np.max(np.abs(w.real))
+    W /= 1.1 * max_eig
+    return W
 
 def generate_sbm_graph(n=1000, num_clusters=10, **kwargs):
     """generate a stochastic block model graph with n nodes and num_clusters clusters
@@ -41,13 +42,14 @@ def generate_sbm_graph(n=1000, num_clusters=10, **kwargs):
     prob_matrix[prob_matrix < 0.025] = 0
     prob_matrix = np.triu(prob_matrix) + np.triu(prob_matrix, 1).T
     
+    W = np.random.laplace(0, 2, size=(n, n))
     G = nx.stochastic_block_model(sizes, prob_matrix)
-    for u, v, d in G.edges(data=True):
-        G[u][v]['weight'] = np.random.laplace(0, 2)
-    
-    matrix = nx.to_scipy_sparse_array(G)
-    matrix = normalize_matrix(matrix, 1.1)
-    return matrix
+    A = nx.to_numpy_array(G)
+    W[A == 0] = 0
+    w, _ = np.linalg.eig(W)
+    max_eig = np.max(np.abs(w.real))
+    W /= 1.1 * max_eig
+    return W
 
 def generate_er_graph(n=1000, **kwargs):
     """Erdős-Renyi graph with n nodes and edge probability p
@@ -59,18 +61,14 @@ def generate_er_graph(n=1000, **kwargs):
     Returns:
         scipy.sparse: adjacency matrix of the generated graph
     """
-    W = np.random.normal(0, 1, n*n)
+    W = np.random.normal(0, 1, size=(n, n))
     W[np.abs(W) >= 1.8] = 0
     W[np.abs(W) <= 1.6] = 0
-    W = W.reshape(n, n)
-
-    G = nx.from_numpy_array(W, create_using=nx.DiGraph)
-    matrix = sp.lil_matrix((n, n))
-    for u, v, d in G.edges(data=True):
-        weight = d['weight']
-        matrix[u, v] = soft_threshold(weight, 1.5)
-    matrix = normalize_matrix(matrix, 1.5)
-    return matrix
+    W = soft_threshold(W, 1.5)
+    w, _ = np.linalg.eig(W)
+    max_eig = np.max(np.abs(w.real))
+    W /= 1.5 * max_eig
+    return W
 
 def generate_pl_graph(n=1000, initial_nodes=15, p=0.8, **kwargs):
     """Power law graph with n nodes and initial_nodes nodes
@@ -84,15 +82,13 @@ def generate_pl_graph(n=1000, initial_nodes=15, p=0.8, **kwargs):
         scipy.sparse: adjacency matrix of the generated graph
     """
     G = nx.erdos_renyi_graph(initial_nodes, p)
-    matrix = sp.lil_matrix((n, n))
-
-    for u, v in G.edges():
-        matrix[u, v] = 1.0
+    matrix = np.zeros((n, n))
+    matrix[:initial_nodes, :initial_nodes] = nx.to_numpy_array(G)
 
     # Adding new nodes with two connections each following a preferential attachment scheme
     for new_node in range(initial_nodes, n):
         existing_nodes = np.arange(new_node)
-        degrees = np.array((matrix != 0).sum(axis=1)).flatten()[:new_node]
+        degrees = np.array((matrix != 0).sum(axis=0)).flatten()[:new_node]
 
         # ensure there are no negative or zero probabilities
         if degrees.sum() == 0:
@@ -105,39 +101,19 @@ def generate_pl_graph(n=1000, initial_nodes=15, p=0.8, **kwargs):
         weights += np.sign(weights) * 0.25
         matrix[new_node, cn] = weights[0]
         matrix[cn, new_node] = weights[1]
+    print(matrix)
 
     # Set the diagonal to -0.5
     for i in range(n):
         matrix[i, i] = -0.5
 
     # Normalize the matrix by 1.5 times its largest eigenvalue
-    matrix = normalize_matrix(matrix, 1.5)
+    w, _ = np.linalg.eig(matrix)
+    max_eig = np.max(np.abs(w.real))
+    matrix /= 1.5 * max_eig
     return matrix
 
-def generate_random_graph(n, **kwargs):
-    """create a random weight matrix for the graph
-
-    Args:
-        n (int): number of nodes in the graph
-
-    Returns:
-        sp.sparse: random weight matrix
-    """
-
-    W = np.random.normal(0, 1, n*n)
-    max_weight = np.max(np.abs(W))
-    W[np.abs(W) > 0.7 * max_weight] = 0
-    W[np.abs(W) < 0.3 * max_weight] = 0
-    W = W.reshape(n, n)
-
-    G = nx.from_numpy_array(W, create_using=nx.DiGraph)
-    matrix = sp.lil_matrix((n, n))
-    for u, v, d in G.edges(data=True):
-        matrix[u, v] = d['weight']
-    matrix = normalize_matrix(matrix, 1.5)
-    return matrix
-
-def create_random_matrix_as_in_paper(N):
+def generate_random_graph(N):
     # as in Methods of Adaptive Signal Processing on Graphs Using Vertex-Time Autoregressive Models
     W = np.random.normal(0, 1, size=(N, N))
 

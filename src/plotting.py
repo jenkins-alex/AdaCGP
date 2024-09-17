@@ -8,11 +8,14 @@ def save_figures(results, weight_matrix, save_path):
     fig = plt.figure(figsize=(10, 4))
     plt.plot(results['pred_error'], label='Prediction Error (from Psi)')
     plt.plot(results['pred_error_recursive_moving_average'][1:], label='Prediction Error Moving Average (from Psi)')
+    plt.plot(results['pred_error_from_h'], label='Prediction Error (from h and W)')
+    plt.plot(results['pred_error_recursive_moving_average_h'][1:], label='Prediction Error Moving Average (from h and W)')
     plt.plot(results['filter_error'], label='Graph Filter Error')
     plt.plot(results['w_error'], label='W Error')
     plt.plot(results['percentage_correct_elements'], label='ptg. correct elements')
     plt.plot(results['p_miss'], label='p_miss')
     plt.plot(results['p_false_alarm'], label='p_false_alarm')
+    plt.plot(results['coeff_errors'], label='coeff errors')
 
     # plot the convergence status (True, False) as block blue
     alg1_converged_status = np.array(results['first_alg_converged_status'])
