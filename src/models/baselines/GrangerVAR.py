@@ -58,9 +58,6 @@ class GrangerVAR:
             'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': [1]
         }
 
-        lowest_error = 1e10
-        patience_left = self._patience
-
         # init params
         y = np.array(y)
         weight_matrix = np.array(weight_matrix) if weight_matrix is not None else None
@@ -75,20 +72,9 @@ class GrangerVAR:
                 ##################################
                 ######### CHECK CONVERGENCE ######
                 ##################################
-                if lowest_error != 0:
-                    relative_improvement = (lowest_error - ma_error) / lowest_error
-                else:
-                    relative_improvement = float('inf') if ma_error < lowest_error else 0
-
-                if relative_improvement > self._min_delta_percent:
-                    lowest_error = ma_error
-                    patience_left = self._patience
-                else:
-                    if t > self._patience:
-                        patience_left -= 1
-
-                if patience_left == 0:
-                    break
+                if self._patience is not None:
+                    if (t-self._P_window) > self._patience:
+                        break
                     
                 ##################################
                 ######### COMPUTE W ##############
