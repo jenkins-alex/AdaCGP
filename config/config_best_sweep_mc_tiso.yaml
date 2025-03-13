@@ -1,0 +1,35 @@
+hydra:
+  mode: MULTIRUN
+  sweep:
+    dir: logs/${model.name}/${data.name}/best_sweep_mc/${now:%Y-%m-%d}/${now:%H-%M-%S}/${optimise_metric}
+    subdir: ${data_seed}
+
+  sweeper:
+    sampler:
+      _target_: optuna.samplers.GridSampler
+    _target_: hydra_plugins.hydra_optuna_sweeper.optuna_sweeper.OptunaSweeper
+    storage: null
+    direction: minimize
+    study_name: TISO
+    n_jobs: 10
+  
+    params:
+      +data_seed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+      optimise_metric: choice('nmse_pred_alg1')
+
+sweep_results_dir: 'logs/TISO/cgp_simulated/2024-09-17/17-57-50'
+optimise_metric: 'nmse_w_alg1'
+optimise_direction: 'min'
+dump_results: true
+model:
+  name: 'TISO'
+  hyperparams:
+    patience: 1000
+data:
+  name: 'cgp_simulated'
+
+defaults:
+  - _self_
+  - override hydra/sweeper: optuna
+  - override /hydra/sweeper/sampler: grid
+  - override hydra/launcher: joblib

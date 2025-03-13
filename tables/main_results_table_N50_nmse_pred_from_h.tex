@@ -1,0 +1,39 @@
+\begin{tabular}{llllll}
+\toprule
+{} &                   algorithm &        nmse_pred &           nmse_w &           p_miss &    p_false_alarm \\
+graph  &                             &                  &                  &                  &                  \\
+\midrule
+ER     &                       TIRSO &  0.68 $\pm$ 0.01 &  1.07 $\pm$ 0.01 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+ER     &                        TISO &  0.67 $\pm$ 0.02 &  1.07 $\pm$ 0.01 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+ER     &  AdaCGP (P1 w/ alt. debias) &  0.56 $\pm$ 0.01 &  0.07 $\pm$ 0.02 &  0.00 $\pm$ 0.00 &  0.99 $\pm$ 0.00 \\
+ER     &  AdaCGP (P2 w/ alt. debias) &  0.55 $\pm$ 0.01 &  0.05 $\pm$ 0.01 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+ER     &                 AdaCGP (P2) &  0.53 $\pm$ 0.01 &  0.05 $\pm$ 0.01 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+ER     &       AdaCGP (P2 w/ debias) &  0.53 $\pm$ 0.00 &  0.03 $\pm$ 0.00 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+ER     &                 AdaCGP (P1) &  0.53 $\pm$ 0.00 &  1.00 $\pm$ 0.00 &  0.00 $\pm$ 0.00 &  0.01 $\pm$ 0.00 \\
+ER     &       AdaCGP (P1 w/ debias) &  0.52 $\pm$ 0.01 &  0.00 $\pm$ 0.00 &  0.00 $\pm$ 0.00 &  0.87 $\pm$ 0.05 \\
+KR     &                       TIRSO &  0.73 $\pm$ 0.03 &  0.79 $\pm$ 0.01 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+KR     &                        TISO &  0.72 $\pm$ 0.03 &  0.79 $\pm$ 0.02 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+KR     &  AdaCGP (P2 w/ alt. debias) &  0.67 $\pm$ 0.01 &  0.34 $\pm$ 0.03 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+KR     &  AdaCGP (P1 w/ alt. debias) &  0.67 $\pm$ 0.01 &  0.33 $\pm$ 0.06 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+KR     &                 AdaCGP (P2) &  0.66 $\pm$ 0.01 &  0.24 $\pm$ 0.02 &  0.00 $\pm$ 0.00 &  0.97 $\pm$ 0.00 \\
+KR     &       AdaCGP (P2 w/ debias) &  0.63 $\pm$ 0.01 &  0.08 $\pm$ 0.01 &  0.00 $\pm$ 0.00 &  0.96 $\pm$ 0.02 \\
+KR     &       AdaCGP (P1 w/ debias) &  0.62 $\pm$ 0.01 &  0.04 $\pm$ 0.00 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+KR     &                 AdaCGP (P1) &  0.61 $\pm$ 0.01 &  0.14 $\pm$ 0.05 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+RANDOM &                       TIRSO &  0.69 $\pm$ 0.02 &  1.07 $\pm$ 0.01 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+RANDOM &                        TISO &  0.68 $\pm$ 0.01 &  1.07 $\pm$ 0.01 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+RANDOM &  AdaCGP (P2 w/ alt. debias) &  0.59 $\pm$ 0.01 &  0.08 $\pm$ 0.02 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+RANDOM &  AdaCGP (P1 w/ alt. debias) &  0.59 $\pm$ 0.01 &  0.07 $\pm$ 0.01 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+RANDOM &                 AdaCGP (P1) &  0.57 $\pm$ 0.01 &  1.00 $\pm$ 0.00 &  0.00 $\pm$ 0.00 &  0.61 $\pm$ 0.02 \\
+RANDOM &       AdaCGP (P2 w/ debias) &  0.56 $\pm$ 0.00 &  0.03 $\pm$ 0.00 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+RANDOM &       AdaCGP (P1 w/ debias) &  0.55 $\pm$ 0.00 &  0.02 $\pm$ 0.00 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+RANDOM &                 AdaCGP (P2) &  0.54 $\pm$ 0.00 &  0.05 $\pm$ 0.01 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+SBM    &       AdaCGP (P1 w/ debias) &  0.88 $\pm$ 0.03 &  0.12 $\pm$ 0.07 &  0.02 $\pm$ 0.02 &  0.91 $\pm$ 0.07 \\
+SBM    &                       TIRSO &  0.88 $\pm$ 0.01 &  1.47 $\pm$ 0.06 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+SBM    &                        TISO &  0.86 $\pm$ 0.01 &  1.50 $\pm$ 0.06 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+SBM    &  AdaCGP (P1 w/ alt. debias) &  0.86 $\pm$ 0.01 &  0.18 $\pm$ 0.03 &  0.06 $\pm$ 0.01 &  0.72 $\pm$ 0.04 \\
+SBM    &       AdaCGP (P2 w/ debias) &  0.84 $\pm$ 0.01 &  0.28 $\pm$ 0.03 &  0.02 $\pm$ 0.03 &  0.93 $\pm$ 0.10 \\
+SBM    &                 AdaCGP (P1) &  0.84 $\pm$ 0.01 &  1.00 $\pm$ 0.00 &  0.19 $\pm$ 0.05 &  0.13 $\pm$ 0.06 \\
+SBM    &  AdaCGP (P2 w/ alt. debias) &  0.83 $\pm$ 0.01 &  0.28 $\pm$ 0.03 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+SBM    &                 AdaCGP (P2) &  0.81 $\pm$ 0.01 &  0.24 $\pm$ 0.05 &  0.02 $\pm$ 0.01 &  0.92 $\pm$ 0.02 \\
+\bottomrule
+\end{tabular}

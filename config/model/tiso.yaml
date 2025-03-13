@@ -4,6 +4,6 @@ hyperparams:
   lambda: 0.1
   epsilon: 1e-3
   ma_alpha: 0.005
-  patience: 200
+  patience: 500
   min_delta_percent: 0.01
   default_stepsize: 0

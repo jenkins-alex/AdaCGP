@@ -1,0 +1,25 @@
+name: 'AdaCGP'
+hyperparams:
+  P: 3
+  gamma: 0.35
+  lambda: 0.8
+  nu: 0.005
+  w_stepsize: 0.01
+  h_stepsize: 0.001
+  psi_stepsize: 1e-5
+  epsilon: 1e-3
+  ma_alpha: 0.005
+  use_path_1: false
+  instant_h: true
+  patience: 500
+  burn_in_debiasing: 500
+  min_delta_percent: 0.01
+  use_armijo: false
+  warm_up_steps: 0
+  alternate: false
+  alternate_mod: 2
+  monitor_debiasing: 'pred_error_recursive_moving_average_h'
+  mus:
+    - 0.1
+    - 0.1
+    - 0.1

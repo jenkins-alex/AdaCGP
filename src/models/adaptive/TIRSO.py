@@ -146,6 +146,6 @@ class TIRSO:
                     results['p_miss'].append(((W == 0) * (weight_matrix != 0)).sum().item() / (weight_matrix != 0).sum().item())
                     results['p_false_alarm'].append(((W != 0) * (weight_matrix == 0)).sum().item() / (weight_matrix == 0).sum().item())
             
-                results['matrices'].append(W)
                 pbar.set_postfix({'MA y error': ma_error})
+        results['matrices'].append(W)
         return results

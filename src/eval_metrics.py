@@ -42,7 +42,7 @@ def save_results(model_name, patience, results, save_path, dump_results=False):
                 for metric_name, metric_values in metrics.items():
                     mean_value = np.mean(metric_values[alg_state])
                     f.write(f"{metric_name}_{alg_name}: {mean_value:.9f}\n")
-        return 'pred_error_from_h'
+        return 'pred_error'
 
     elif model_name == 'TISO':
         # compute the average errors for the patience period
@@ -71,6 +71,31 @@ def save_results(model_name, patience, results, save_path, dump_results=False):
         return 'pred_error'
 
     elif model_name == 'TIRSO':
+        # compute the average errors for the patience period
+        pred_error = np.array(results['pred_error'])
+        alg1_in_steady_state = np.zeros_like(pred_error, dtype=bool)
+        alg1_in_steady_state[-patience:] = True
+
+        metrics = {
+            'nmse_pred': np.array(results['pred_error']),
+            'nmse_w': np.array(results['w_error']),
+            'pce': np.array(results['percentage_correct_elements']),
+            'p_miss': np.array(results['p_miss']),
+            'p_false_alarm': np.array(results['p_false_alarm'])
+        }
+
+        algorithms = {
+            'alg1': alg1_in_steady_state
+        }
+
+        with open(os.path.join(save_path, 'eval_results.txt'), 'w') as f:
+            for alg_name, alg_state in algorithms.items():
+                for metric_name, metric_values in metrics.items():
+                    mean_value = np.mean(metric_values[alg_state])
+                    f.write(f"{metric_name}_{alg_name}: {mean_value:.9f}\n")
+        return 'pred_error'
+    
+    elif model_name == 'AdaVAR':
         # compute the average errors for the patience period
         pred_error = np.array(results['pred_error'])
         alg1_in_steady_state = np.zeros_like(pred_error, dtype=bool)

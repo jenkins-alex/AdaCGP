@@ -1,0 +1,11 @@
+name: 'AdaVAR'
+hyperparams:
+  P: 3
+  default_stepsize: 0
+  epsilon: 1e-3
+  lambda: 0.99
+  ma_alpha: 0.005
+  patience: 500
+  min_delta_percent: 0.01
+  warm_up_steps: 0
+  mu: 0.1

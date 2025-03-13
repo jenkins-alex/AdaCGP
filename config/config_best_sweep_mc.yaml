@@ -1,7 +1,7 @@
 hydra:
   mode: MULTIRUN
   sweep:
-    dir: logs/${model.name}/${data.name}/best_sweep_mc/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: logs/${model.name}/${data.name}/best_sweep_mc/${now:%Y-%m-%d}/${now:%H-%M-%S}/${optimise_metric}
     subdir: ${data_seed}
 
   sweeper:
@@ -11,22 +11,28 @@ hydra:
     storage: null
     direction: minimize
     study_name: AdaCGP
-    n_jobs: 10
-  
+    n_jobs: 20
+
     params:
       +data_seed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
 
-sweep_results_dir: 'logs/AdaCGP/cgp_simulated/2024-09-15/22-12-34'
-optimise_metric: 'nmse_pred_from_h_alg2'
+# sweep_results_dir: 'logs/AdaCGP/cgp_simulated/2024-09-24/11-41-54' #'logs/AdaCGP/cgp_simulated/2024-09-15/22-12-34'
+# sweep_results_dir: 'logs/AdaCGP/cgp_simulated/2024-09-28/15-33-02' # with sparsity applied to best
+# sweep_results_dir: 'logs/AdaCGP/cgp_simulated/2024-09-28/12-37-33' # best sweep
+sweep_results_dir: 'logs/AdaCGP/cgp_simulated/2024-09-29/09-26-17' # best sweep latest
 optimise_direction: 'min'
+optimise_metric: 'nmse_pred_from_h_alg2'
 dump_results: true
 model:
   name: 'AdaCGP'
+  hyperparams:
+    patience: 1000
 data:
   name: 'cgp_simulated'
 
+device: 'cpu'
 defaults:
   - _self_
   - override hydra/sweeper: optuna
   - override /hydra/sweeper/sampler: grid
-  - override hydra/launcher: joblib
+  - override hydra/launcher: ray

@@ -1,0 +1,43 @@
+seed: 42
+
+hydra:
+  mode: MULTIRUN
+  sweep:
+    dir: logs/${model.name}/${data.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: graph_${graph.graph_type}/N_${data.N}/use_path_1_${model.hyperparams.use_path_1}/alternate_${model.hyperparams.alternate}/gamma_${model.hyperparams.gamma}/lambda_${model.hyperparams.lambda}/nu_${model.hyperparams.nu}/mus_${model.hyperparams.mus.0}_${model.hyperparams.mus.1}_${model.hyperparams.mus.2}/seed_${seed}
+
+  sweeper:
+    sampler:
+      _target_: optuna.samplers.RandomSampler
+      seed: 42
+    _target_: hydra_plugins.hydra_optuna_sweeper.optuna_sweeper.OptunaSweeper
+    storage: null
+    direction: minimize
+    study_name: AdaCGP
+    n_trials: 20000
+    n_jobs: 30
+  
+    params:
+      seed: 42
+      graph: choice(er, random, sbm, kr)
+      data.N: choice(50)
+      model: choice("adacgp_best_${graph.graph_type}_True", "adacgp_best_${graph.graph_type}_False")
+      model.hyperparams.alternate: choice(true, false)
+      model.hyperparams.mus.0: interval(0.001, 1)
+      model.hyperparams.mus.1: interval(0.001, 1)
+      model.hyperparams.mus.2: interval(0.001, 1)
+
+# using the best parameters from previous sweep, just changing the sparsity now
+# compute non-zero elements across all of PSI hence changing mus.0, mus.1, mus.2
+dump_results: true
+device: cpu
+use_path_1: 'False'
+
+defaults:
+  - _self_
+  - data: cgp
+  - model: adacgp_best_${graph}
+  - graph: random
+  - override hydra/sweeper: optuna
+  - override /hydra/sweeper/sampler: random
+  - override hydra/launcher: ray

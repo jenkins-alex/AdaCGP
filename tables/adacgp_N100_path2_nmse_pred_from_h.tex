@@ -1,0 +1,19 @@
+\begin{tabular}{lllllll}
+\toprule
+    &                         &        nmse_pred &  nmse_pred_from_h &           nmse_w &           p_miss &    p_false_alarm \\
+graph & algorithm &                  &                   &                  &                  &                  \\
+\midrule
+ER & AdaCGP (standard) &  0.67 $\pm$ 0.02 &   0.65 $\pm$ 0.02 &  0.42 $\pm$ 0.04 &  0.01 $\pm$ 0.00 &  0.54 $\pm$ 0.05 \\
+    & AdaCGP (w/ debias) &  0.61 $\pm$ 0.02 &   0.64 $\pm$ 0.01 &  0.34 $\pm$ 0.04 &  0.01 $\pm$ 0.00 &  0.56 $\pm$ 0.11 \\
+    & AdaCGP (w/ alt. debias) &  0.84 $\pm$ 0.02 &   1.17 $\pm$ 1.72 &  0.75 $\pm$ 0.04 &  0.01 $\pm$ 0.00 &  0.62 $\pm$ 0.04 \\
+KR & AdaCGP (standard) &  0.78 $\pm$ 0.01 &   0.73 $\pm$ 0.01 &  0.40 $\pm$ 0.04 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+    & AdaCGP (w/ debias) &  0.74 $\pm$ 0.02 &   0.75 $\pm$ 0.11 &  0.31 $\pm$ 0.04 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+    & AdaCGP (w/ alt. debias) &  0.90 $\pm$ 0.04 &  8.58 $\pm$ 33.96 &  0.77 $\pm$ 0.10 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+RANDOM & AdaCGP (standard) &  0.67 $\pm$ 0.02 &   0.72 $\pm$ 0.01 &  0.26 $\pm$ 0.03 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+    & AdaCGP (w/ debias) &  0.65 $\pm$ 0.01 &   0.70 $\pm$ 0.01 &  0.20 $\pm$ 0.02 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+    & AdaCGP (w/ alt. debias) &  0.82 $\pm$ 0.03 &   0.76 $\pm$ 0.04 &  0.64 $\pm$ 0.06 &  0.00 $\pm$ 0.00 &  1.00 $\pm$ 0.00 \\
+SBM & AdaCGP (standard) &  0.98 $\pm$ 0.02 &   1.11 $\pm$ 0.08 &  0.99 $\pm$ 0.00 &  0.98 $\pm$ 0.00 &  0.00 $\pm$ 0.00 \\
+    & AdaCGP (w/ debias) &  0.88 $\pm$ 0.08 &   2.03 $\pm$ 2.10 &  0.94 $\pm$ 0.04 &  0.98 $\pm$ 0.01 &  0.00 $\pm$ 0.00 \\
+    & AdaCGP (w/ alt. debias) &  0.99 $\pm$ 0.01 &   1.08 $\pm$ 0.02 &  0.99 $\pm$ 0.01 &  0.97 $\pm$ 0.01 &  0.00 $\pm$ 0.00 \\
+\bottomrule
+\end{tabular}

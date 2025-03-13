@@ -65,7 +65,7 @@ class AdaCGP:
             'second_alg_converged_status': [], 'matrices': [], 'p_miss': [], 'p_false_alarm': [], 'psi_losses': [],
             'percentage_correct_elements': [], 'num_non_zero_elements': [],
             'prob_miss': [], 'prob_false_alarm': [], 'pred_error_recursive_moving_average': [1],
-            'pred_error_recursive_moving_average_h': [1]
+            'pred_error_recursive_moving_average_h': [1], 'precision': [], 'recall': [], 'f1': []
         }
  
         switch_algorithm = False
@@ -74,6 +74,8 @@ class AdaCGP:
         lowest_error = 1e10
         psi_loss = 0.0
         process_length = X.shape[0]
+        debiasing_W = torch.ones_like(self.W)  # assume not sparse
+
         with torch.no_grad():
             with tqdm(range(process_length)) as pbar:
                 for t in pbar:
@@ -88,11 +90,11 @@ class AdaCGP:
                         switch_algorithm = (t % 2 == 0)
 
                     if self._alternate:
-                        ma_error = results['pred_error_recursive_moving_average_h'][-1]
+                        ma_error = results[self._monitor_debiasing][-1]
                     elif not first_alg_converged:
                         ma_error = results['pred_error_recursive_moving_average'][-1]
                     else:
-                        ma_error = results['pred_error_recursive_moving_average_h'][-1]
+                        ma_error = results[self._monitor_debiasing][-1]
 
                     ##################################
                     ######### CHECK CONVERGENCE ######
@@ -144,175 +146,33 @@ class AdaCGP:
                     # Psi loss update
                     psi_loss = 0.5 * (self._lambda * psi_loss + torch.norm(yt - torch.matmul(self.Psi, xPt))**2)
                     results['psi_losses'].append(psi_loss.item())
-            
-                    if not switch_algorithm:
-                        ############################################
-                        ############## COMPUTE PSI #################
-                        ############################################
-            
-                        self.R0 = self._lambda * self.R0 + torch.matmul(xPt, xPt.T)
-                        self.P0 = self._lambda * self.P0 + torch.matmul(yt, xPt.T)
-            
-                        # Compute mus
-                        mu_scales = []
-                        Q_unpacked = get_each_graph_filter(self.Q, self.N, self._P)
-                        P0_unpacked = get_each_graph_filter(self.P0, self.N, self._P)
-                        for p in range(0, self._P):
-                            Qp = Q_unpacked[:, p, :]
-                            P0p = P0_unpacked[:, p, :]
-                            infty_norm = torch.norm(P0p - self._gamma * Qp, p=float('inf'))
-                            mu_scales.append(infty_norm)
-
-                        mus_pt = self.mus * torch.stack(mu_scales)
-                        M = torch.vstack([self.ones_NxN * mus_pt[p] for p in range(0, self._P)]).T  # (N, N*P)
-            
-                        include_comm_term = not self._use_path_1
-                        if include_comm_term:
-                            Qs = []
-                            Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
-                            for p in range(0, self._P):
-                                Qp = comm_term_mnlms(Psi_unpacked, p, self._P)
-                                Qs.append(Qp)
-                            self.Q = pack_graph_filters(Qs, self.N, self._P)
-                            G = torch.matmul(self.Psi, self.R0) - (self.P0 - self._gamma * self.Q)
+                    
+                    if not self._alternate:
+                        if not switch_algorithm:
+                            psi_stepsize = self.update_psi(xPt, yt, t, ma_error, pbar, psi_loss)
+                            pbar.set_postfix({'MA y error': ma_error, 'Step': psi_stepsize, 'Converged': switch_algorithm})
+                
+                            if self._use_path_1:
+                                _ = self.update_w_path_1(xPt)
+                            else:
+                                self.update_w_path_2()
+                            debiasing_W = (self.W.clone() != 0).float()
+                            Psi = self.Psi.clone()
+                            W = self.W.clone()
+                
                         else:
-                            G = torch.matmul(self.Psi, self.R0) - self.P0
-                        
-                        # set maximum stepsize using max eigenvalue of autocorrelation matrix
-                        eigs = torch.lobpcg(self.R0, largest=True)
-                        psi_stepsize = 2 / (eigs[0].item())
-                        A = self.eye_P * psi_stepsize
-                        for p in range(self._P):
-                            A[p, p] /= (torch.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + self._epsilon)
-            
-                        if self.use_armijo and (t > self._warm_up_steps):
-                            # Line search
-                            Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
-                            direction_unpacked = get_each_graph_filter(G, self.N, self._P)
-                            for p in range(0, self._P):
-                                alpha = wolfe_line_search(
-                                    objective_function_psi_mlms,
-                                    gradient_function_psi_mlms,
-                                    update_function_psi_mlms,
-                                    Psi_unpacked[:, p, :].flatten(),
-                                    step_init=A[p, p],
-                                    beta=0.5,
-                                    args=(self.Psi.clone(), mus_pt, self.R0, self.P0, self._gamma, p, include_comm_term, self.N, self._P, self._lambda, xPt, yt, psi_loss),
-                                    max_iter=10
-                                )
-                                A[p, p] = alpha
-            
-                        ######### UPDATE PARAM #########
-                        dPsi_pos = - (M + G) @ torch.kron(A, self.eye_N)
-                        dPsi_neg = - (M - G) @ torch.kron(A, self.eye_N)
-                        self.Psi_pos = self.Psi_pos + dPsi_pos
-                        self.Psi_neg = self.Psi_neg + dPsi_neg
-
-                        # projection onto non-negative space
-                        self.Psi_pos[self.Psi_pos < 0] = 0
-                        self.Psi_neg[self.Psi_neg < 0] = 0
-                        self.Psi = self.Psi_pos - self.Psi_neg
-                        pbar.set_postfix({'MA y error': ma_error, 'Step': psi_stepsize, 'Converged': switch_algorithm})
-            
-                        ############################################
-                        ############### COMPUTE W ##################
-                        ############################################
-            
-                        if self._use_path_1:
-                            # Compute S
-                            Ss = []
-                            Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
-                            S = second_comm_term_mnlms(Psi_unpacked, self.W, self._P)
-            
-                            # Compute gradient
-                            Psi_1 = Psi_unpacked[:, 0, :]
-                            V = self.W - (Psi_1 - self._gamma * S)
-                            M_1 = self.ones_NxN * mus_pt[0]
-
-                            ######## ARMIJO STEPSIZE #######
-                            alpha = wolfe_line_search(
-                                objective_function_wstep2_lms,
-                                gradient_function_wstep2_lms,
-                                update_function_wstep2_lms,
-                                self.W.flatten(),
-                                step_init=self._w_stepsize,
-                                beta=0.9,
-                                args=(self.Psi.clone(), mus_pt, self._gamma, self.N, self._P),
-                                max_iter=10
-                            )
-                            w_stepsize = alpha
-            
-                            ######### UPDATE PARAM #########
-                            self.W_pos = self.W_pos - w_stepsize * (M_1 + V)
-                            self.W_neg = self.W_neg - w_stepsize * (M_1 - V)
-                            self.W_pos[self.W_pos < 0] = 0
-                            self.W_neg[self.W_neg < 0] = 0
-                            self.W = self.W_pos - self.W_neg
-                        else:
-                            Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
-                            self.W = Psi_unpacked[:, 0, :]
-            
+                            Psi, W, psi_stepsize = self.perform_debiasing(xPt, yt, t, debiasing_W, psi_loss)
+                            pbar.set_postfix({'MA y error': ma_error, 'Step': psi_stepsize, 'Converged': switch_algorithm})
                     else:
-                        ############################################
-                        ############### DEBIASING ##################
-                        ############################################
-            
-                        self.R0 = self._lambda * self.R0 + torch.matmul(xPt, xPt.T)
-                        self.P0 = self._lambda * self.P0 + torch.matmul(yt, xPt.T)
-
-                        # Compute mus
-                        mu_scales = []
-                        Q_unpacked = get_each_graph_filter(self.Q, self.N, self._P)
-                        P0_unpacked = get_each_graph_filter(self.P0, self.N, self._P)
-                        for p in range(0, self._P):
-                            Qp = Q_unpacked[:, p, :]
-                            P0p = P0_unpacked[:, p, :]
-                            infty_norm = torch.norm(P0p - self._gamma * Qp, p=float('inf'))
-                            mu_scales.append(infty_norm)
-
-                        mus_pt = self.mus * torch.stack(mu_scales)
-            
-                        G = torch.matmul(self.Psi, self.R0) - self.P0
-                        masks = []
-                        for i in range(self._P):
-                            mask = torch.matrix_power(self.W, i+1)
-                            masks.append(mask)
-                        mask = pack_graph_filters(masks, self.N, self._P)
-                        G[mask == 0] = 0
-            
-                        # set maximum stepsize using max eigenvalue of autocorrelation matrix
-                        eigs = torch.lobpcg(self.R0, largest=True)
-                        psi_stepsize = 2 / (eigs[0].item())
-                        A = self.eye_P * psi_stepsize
-                        for p in range(self._P):
-                            A[p, p] /= (torch.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + self._epsilon)
-            
-                        if self._use_armijo and (t > self._warm_up_steps):
-                            Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
-                            for p in range(0, self._P):
-                                alpha = wolfe_line_search(
-                                    objective_function_psi_debias,
-                                    gradient_function_psi_debias,
-                                    update_function_psi_debias,
-                                    Psi_unpacked[:, p, :].flatten(),
-                                    step_init=A[p, p],
-                                    beta=0.5,
-                                    args=(self.Psi.clone(), mus_pt, self.R0, self.P0, 0, p, False, self.N, self._P, self._lambda, xPt, yt, psi_loss, self.W),
-                                    max_iter=10
-                                )
-                                A[p, p] = alpha
-
-                        ######### UPDATE PARAM #########
-                        self.Psi = self.Psi - torch.matmul(G, torch.kron(A, self.eye_N))
-                        Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
-                        self.W = Psi_unpacked[:, 0, :]
-                        self.W_pos = self.W.clone()
-                        self.W_pos[self.W_pos < 0] = 0
-                        self.W_neg = self.W.clone()
-                        self.W_neg[self.W_neg > 0] = 0
-                        self.W_neg *= -1
+                        _ = self.update_psi(xPt, yt, t, ma_error, pbar, psi_loss)
+                        if self._use_path_1:
+                            _ = self.update_w_path_1(xPt)
+                        else:
+                            self.update_w_path_2()
+                        debiasing_W = (self.W.clone() != 0).float()
+                        Psi, W, psi_stepsize = self.perform_debiasing(xPt, yt, t, debiasing_W, psi_loss)
                         pbar.set_postfix({'MA y error': ma_error, 'Step': psi_stepsize, 'Converged': switch_algorithm})
-
+            
                     ############################################
                     ########### COMPUTE FILTER COEFS ###########
                     ############################################
@@ -322,7 +182,7 @@ class AdaCGP:
                     for i in range(1, self._P + 1):
                         x_t_m_i = Xpt[i-1, :]
                         for j in range(i + 1):
-                            Yij = torch.matmul(torch.matrix_power(self.W, j), x_t_m_i)
+                            Yij = torch.matmul(torch.matrix_power(W, j), x_t_m_i)
                             Ys.append(Yij)
                     Ys = torch.stack(Ys, dim=1)  # (N, M)
             
@@ -353,8 +213,6 @@ class AdaCGP:
                     ######### UPDATE PARAM #########
                     dh = h_g + nu_t * b
                     self.h = self.h + h_stepsize * dh
-                    # self.h[0] = 0
-                    # self.h[1] = 1
                     d_hat_h = torch.matmul(Ys, self.h)
 
                     ###################################
@@ -362,7 +220,7 @@ class AdaCGP:
                     ###################################
 
                     # Compute squared error of signal forecast from graph filters
-                    d_hat_psi = torch.matmul(self.Psi, xPt)
+                    d_hat_psi = torch.matmul(Psi, xPt)
                     e = yt - d_hat_psi
                     norm_error = torch.norm(e)**2 / torch.norm(yt)**2
                     results['pred_error'].append(norm_error.item())
@@ -382,25 +240,37 @@ class AdaCGP:
         
                     # Compute squared error of graph filter estimation
                     if graph_filter_matrix is not None:
-                        m_error = graph_filter_matrix - self.Psi
+                        m_error = graph_filter_matrix - Psi
                         norm_m_error = torch.norm(m_error)**2 / torch.norm(graph_filter_matrix)**2
                         results['filter_error'].append(norm_m_error.item())
             
                     # Compute squared error of W estimation
                     if weight_matrix is not None:
-                        weight_matrix_error = weight_matrix - self.W
+                        weight_matrix_error = weight_matrix - W
                         norm_w_error = torch.norm(weight_matrix_error)**2 / torch.norm(weight_matrix)**2
                         results['w_error'].append(norm_w_error.item())
-                        results['num_non_zero_elements'].append((self.W != 0).sum().item())
+                        results['num_non_zero_elements'].append((W != 0).sum().item())
 
                         # compute the percentage of elements correctly identified in W
+                        # recall
                         total = (weight_matrix != 0).sum()
-                        frac = ((self.W != 0) * (weight_matrix != 0)).sum() / total
+                        frac = ((W != 0) * (weight_matrix != 0)).sum() / total
                         results['percentage_correct_elements'].append(frac.item())
 
+                        true_positives = ((W != 0) * (weight_matrix != 0)).sum().item()
+                        false_positives = ((W != 0) * (weight_matrix == 0)).sum().item()
+                        false_negatives = ((W == 0) * (weight_matrix != 0)).sum().item()
+
+                        precision = 0 if (true_positives + false_positives) == 0 else true_positives / (true_positives + false_positives)
+                        recall = 0 if (true_positives + false_negatives) == 0 else true_positives / (true_positives + false_negatives)
+                        f1 = 0 if (precision + recall) == 0 else 2 * (precision * recall) / (precision + recall)
+                        results['precision'].append(precision)
+                        results['recall'].append(recall)
+                        results['f1'].append(f1)
+
                         # save results for p_miss: probability of missing a non-zero element in W
-                        results['p_miss'].append(((self.W == 0) * (weight_matrix != 0)).sum().item() / (weight_matrix != 0).sum().item())
-                        results['p_false_alarm'].append(((self.W != 0) * (weight_matrix == 0)).sum().item() / (weight_matrix == 0).sum().item())
+                        results['p_miss'].append(((W == 0) * (weight_matrix != 0)).sum().item() / (weight_matrix != 0).sum().item())
+                        results['p_false_alarm'].append(((W != 0) * (weight_matrix == 0)).sum().item() / (weight_matrix == 0).sum().item())
                 
                     # Compute the error for filter coefficient estimation
                     if filter_coefficients is not None:
@@ -411,8 +281,164 @@ class AdaCGP:
                     # Store the convergence status
                     results['first_alg_converged_status'].append(first_alg_converged)
                     results['second_alg_converged_status'].append(second_alg_converged)
-                    results['matrices'].append(self.W.cpu().numpy())
+        results['matrices'].append(W.cpu().numpy())
         return results
+    
+    def perform_debiasing(self, xPt, yt, t, debiasing_W, psi_loss):
+        # Update R0 and P0
+        self.R0 = self._lambda * self.R0 + torch.matmul(xPt, xPt.T)
+        self.P0 = self._lambda * self.P0 + torch.matmul(yt, xPt.T)
+
+        # Compute mus
+        mu_scales = []
+        Q_unpacked = get_each_graph_filter(self.Q, self.N, self._P)
+        P0_unpacked = get_each_graph_filter(self.P0, self.N, self._P)
+        for p in range(self._P):
+            Qp = Q_unpacked[:, p, :]
+            P0p = P0_unpacked[:, p, :]
+            infty_norm = torch.norm(P0p - self._gamma * Qp, p=float('inf'))
+            mu_scales.append(infty_norm)
+
+        mus_pt = self.mus * torch.stack(mu_scales)
+
+        # Compute G
+        G = torch.matmul(self.Psi, self.R0) - self.P0
+
+        # Apply mask
+        masks = [torch.matrix_power(debiasing_W, i+1) for i in range(self._P)]
+        mask = pack_graph_filters(masks, self.N, self._P)
+        G[mask == 0] = 0
+
+        # Compute stepsize
+        eigs = torch.lobpcg(self.R0, largest=True)
+        psi_stepsize = 2 / (eigs[0].item())
+        A = self.eye_P * psi_stepsize
+        for p in range(self._P):
+            A[p, p] /= (torch.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + self._epsilon)
+
+        # Armijo line search
+        if self._use_armijo and (t > self._warm_up_steps):
+            Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
+            for p in range(self._P):
+                alpha = wolfe_line_search(
+                    objective_function_psi_debias,
+                    gradient_function_psi_debias,
+                    update_function_psi_debias,
+                    Psi_unpacked[:, p, :].flatten(),
+                    step_init=A[p, p],
+                    beta=0.5,
+                    args=(self.Psi.clone(), mus_pt, self.R0, self.P0, 0, p, False, self.N, self._P, self._lambda, xPt, yt, psi_loss, self.W),
+                    max_iter=10
+                )
+                A[p, p] = alpha
+
+        # Update parameters
+        Psi = self.Psi - torch.matmul(G, torch.kron(A, self.eye_N))
+        Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
+        W = Psi_unpacked[:, 0, :] * debiasing_W
+        return Psi, W, psi_stepsize
+
+    def update_w_path_2(self):
+        Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
+        self.W = Psi_unpacked[:, 0, :]
+
+    def update_w_path_1(self, xPt):
+        # Compute S
+        Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
+        S = second_comm_term_mnlms(Psi_unpacked, self.W, self._P)
+
+        # Compute gradient
+        Psi_1 = Psi_unpacked[:, 0, :]
+        V = self.W - (Psi_1 - self._gamma * S)
+        M_1 = self.ones_NxN * self.mus_pt[0] / (torch.linalg.norm(xPt[:self.N], ord=2)**2 + self._epsilon)
+
+        # Armijo stepsize
+        alpha = wolfe_line_search(
+            objective_function_wstep2_lms,
+            gradient_function_wstep2_lms,
+            update_function_wstep2_lms,
+            self.W.flatten(),
+            step_init=self._w_stepsize,
+            beta=0.5,
+            args=(self.Psi.clone(), self.mus_pt, self._gamma, self.N, self._P),
+            max_iter=10
+        )
+        w_stepsize = alpha
+
+        # Update param
+        self.W_pos = self.W_pos - w_stepsize * (M_1 + V)
+        self.W_neg = self.W_neg - w_stepsize * (M_1 - V)
+        self.W_pos[self.W_pos < 0] = 0
+        self.W_neg[self.W_neg < 0] = 0
+        self.W = self.W_pos - self.W_neg
+        return w_stepsize
+
+    def update_psi(self, xPt, yt, t, ma_error, pbar, psi_loss):
+        # Update R0 and P0
+        self.R0 = self._lambda * self.R0 + torch.matmul(xPt, xPt.T)
+        self.P0 = self._lambda * self.P0 + torch.matmul(yt, xPt.T)
+
+        # Compute mus
+        mu_scales = []
+        Q_unpacked = get_each_graph_filter(self.Q, self.N, self._P)
+        P0_unpacked = get_each_graph_filter(self.P0, self.N, self._P)
+        for p in range(self._P):
+            Qp = Q_unpacked[:, p, :]
+            P0p = P0_unpacked[:, p, :]
+            infty_norm = torch.norm(P0p - self._gamma * Qp, p=float('inf'))
+            mu_scales.append(infty_norm)
+
+        self.mus_pt = self.mus * torch.stack(mu_scales)
+        M = torch.vstack([self.ones_NxN * self.mus_pt[p] for p in range(self._P)]).T  # (N, N*P)
+
+        # Compute G
+        include_comm_term = not self._use_path_1
+        if include_comm_term:
+            Qs = []
+            Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
+            for p in range(self._P):
+                Qp = comm_term_mnlms(Psi_unpacked, p, self._P)
+                Qs.append(Qp)
+            self.Q = pack_graph_filters(Qs, self.N, self._P)
+            G = torch.matmul(self.Psi, self.R0) - (self.P0 - self._gamma * self.Q)
+        else:
+            G = torch.matmul(self.Psi, self.R0) - self.P0
+
+        # Compute stepsize
+        eigs = torch.lobpcg(self.R0, largest=True)
+        psi_stepsize = 2 / (eigs[0].item())
+        A = self.eye_P * psi_stepsize
+        for p in range(self._P):
+            A[p, p] /= (torch.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + self._epsilon)
+
+        # Line search
+        if self.use_armijo and (t > self._warm_up_steps):
+            Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
+            direction_unpacked = get_each_graph_filter(G, self.N, self._P)
+            for p in range(self._P):
+                alpha = wolfe_line_search(
+                    objective_function_psi_mlms,
+                    gradient_function_psi_mlms,
+                    update_function_psi_mlms,
+                    Psi_unpacked[:, p, :].flatten(),
+                    step_init=A[p, p],
+                    beta=0.5,
+                    args=(self.Psi.clone(), self.mus_pt, self.R0, self.P0, self._gamma, p, include_comm_term, self.N, self._P, self._lambda, xPt, yt, psi_loss),
+                    max_iter=10
+                )
+                A[p, p] = alpha
+
+        # Update Psi
+        dPsi_pos = - (M + G) @ torch.kron(A, self.eye_N)
+        dPsi_neg = - (M - G) @ torch.kron(A, self.eye_N)
+        self.Psi_pos = self.Psi_pos + dPsi_pos
+        self.Psi_neg = self.Psi_neg + dPsi_neg
+
+        # Projection onto non-negative space
+        self.Psi_pos[self.Psi_pos < 0] = 0
+        self.Psi_neg[self.Psi_neg < 0] = 0
+        self.Psi = self.Psi_pos - self.Psi_neg
+        return psi_stepsize
 
 def comm(A, B):
     return torch.matmul(A, B) - torch.matmul(B, A)
@@ -420,6 +446,8 @@ def comm(A, B):
 def comm_term_mnlms(W, p, P):
     comm_terms = []
     for k in range(P):
+        if k == p:
+            continue
         comm_ = torch.matmul(comm(W[:, p, :], W[:, k, :]), W[:, k, :].T) + torch.matmul(W[:, k, :].T, comm(W[:, p, :], W[:, k, :]))
         comm_terms.append(comm_)
     return torch.sum(torch.stack(comm_terms), dim=0)

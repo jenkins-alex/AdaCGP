@@ -26,7 +26,7 @@ def generate_kr_graph(n=1000, xi=3, **kwargs):
     W /= 1.1 * max_eig
     return W
 
-def generate_sbm_graph(n=1000, num_clusters=10, **kwargs):
+def generate_sbm_graph(n=1000, num_clusters=10, seed=42, **kwargs):
     """generate a stochastic block model graph with n nodes and num_clusters clusters
 
     Args:
@@ -43,7 +43,7 @@ def generate_sbm_graph(n=1000, num_clusters=10, **kwargs):
     prob_matrix = np.triu(prob_matrix) + np.triu(prob_matrix, 1).T
     
     W = np.random.laplace(0, 2, size=(n, n))
-    G = nx.stochastic_block_model(sizes, prob_matrix)
+    G = nx.stochastic_block_model(sizes, prob_matrix, seed=seed)
     A = nx.to_numpy_array(G)
     W[A == 0] = 0
     w, _ = np.linalg.eig(W)
@@ -113,7 +113,7 @@ def generate_pl_graph(n=1000, initial_nodes=15, p=0.8, **kwargs):
     matrix /= 1.5 * max_eig
     return matrix
 
-def generate_random_graph(N):
+def generate_random_graph(N, **kwargs):
     # as in Methods of Adaptive Signal Processing on Graphs Using Vertex-Time Autoregressive Models
     W = np.random.normal(0, 1, size=(N, N))
 
@@ -128,4 +128,22 @@ def generate_random_graph(N):
     W /= 1.5 * max_eig
     return W
     
-    
+def generate_kr_laplacian_graph(n, xi, **kwargs):
+    return enforce_laplacian_constraints(generate_random_graph(n, **kwargs))
+
+def enforce_laplacian_constraints(L):
+    # Step 1: Enforce the sign constraints on the off-diagonal elements
+    L_diag = np.diag(np.diag(L))
+    L_off_diag = L - L_diag
+    L_positive_diag = np.maximum(0, L_diag)
+    L_negative_off_diag = np.minimum(0, L_off_diag)
+    L_prime = L_positive_diag + L_negative_off_diag
+
+    # Step 2: Enforce the row-wise sum to 0 property
+    row_sums = np.sum(L_prime, axis=1)
+    L_final = L_prime - np.diag(row_sums)  
+
+    w, _ = np.linalg.eig(L_final)
+    max_eig = np.max(np.abs(w.real))
+    L_final /= 1.5 * max_eig
+    return L_final

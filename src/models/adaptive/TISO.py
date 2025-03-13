@@ -69,13 +69,16 @@ class TISO:
                 m_aux = np.transpose(np.fliplr(y_prev))
                 g = m_aux.flatten()
                 
-                try:
-                    R = np.outer(g, g)
-                    eigs = torch.lobpcg(torch.tensor(R), largest=True)
-                    stepsize = 2 / (eigs[0].item())
-                    stepsize /= (np.linalg.norm(g, ord=2)**2 + self._epsilon)
-                except:
-                    stepsize = self._default_stepsize
+                if 'stepsize' in kwargs.keys():
+                    stepsize = kwargs['stepsize']
+                else:
+                    try:
+                        R = np.outer(g, g)
+                        eigs = torch.lobpcg(torch.tensor(R), largest=True)
+                        stepsize = 2 / (eigs[0].item())
+                        stepsize /= (np.linalg.norm(g, ord=2)**2 + self._epsilon)
+                    except:
+                        stepsize = self._default_stepsize
 
                 for n in range(N):
                     grad_n = (g @ a_prev[n, :].T - m_y[n, t]) * g  # this is v_n in the paper
@@ -125,7 +128,8 @@ class TISO:
                     # save results for p_miss: probability of missing a non-zero element in W
                     results['p_miss'].append(((W == 0) * (weight_matrix != 0)).sum().item() / (weight_matrix != 0).sum().item())
                     results['p_false_alarm'].append(((W != 0) * (weight_matrix == 0)).sum().item() / (weight_matrix == 0).sum().item())
-            
-                results['matrices'].append(W)
                 pbar.set_postfix({'MA y error': ma_error})
+                if 'append_all_matrices' in kwargs.keys() and kwargs['append_all_matrices']:
+                    results['matrices'].append(W)
+        results['matrices'].append(W)
         return results

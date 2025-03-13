@@ -1,4 +1,3 @@
-# main.py
 import torch
 import hydra
 import pickle
@@ -8,6 +7,7 @@ from omegaconf import OmegaConf, DictConfig
 from src.data_generation import generate_data
 from src.utils import set_seed
 from src.models.adaptive.AdaCGP import AdaCGP
+from src.models.adaptive.AdaVAR import AdaVAR
 from src.models.adaptive.TISO import TISO
 from src.models.adaptive.TIRSO import TIRSO
 from src.eval_metrics import save_results
@@ -16,7 +16,8 @@ def get_model(name):
     models = {
         'AdaCGP': AdaCGP,
         'TISO': TISO,
-        'TIRSO': TIRSO
+        'TIRSO': TIRSO,
+        'AdaVAR': AdaVAR
     }
     if name not in models:
         raise ValueError(f"Model {name} not implemented")
@@ -53,6 +54,7 @@ def main(cfg: DictConfig):
             'graph_filters_flat': graph_filters_flat
         }
         results = model.run(**model_inputs)
+        results['weight_matrix'] = weight_matrix
 
         # Save results
         dir, subdir = get_save_path()
@@ -64,7 +66,7 @@ def main(cfg: DictConfig):
         return results[error_metric][-1]
     except Exception as e:
         print(e)
-        return results[error_metric][-1]
+        return 1e6
 
 if __name__ == "__main__":
     main()
