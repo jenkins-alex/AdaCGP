@@ -5,6 +5,9 @@ from statsmodels.tsa.api import VAR
 
 
 class GrangerVAR:
+    """
+    Implementation of Granger VAR model for time series forecasting and causal inference.
+    """
     def __init__(self, N, hyperparams, device):
         self.N = N
         self.set_hyperparameters(hyperparams)
