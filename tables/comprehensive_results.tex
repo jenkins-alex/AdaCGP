@@ -1,0 +1,36 @@
+\begin{table*}[t]
+\centering
+\caption{Comprehensive Comparison of Graph Topology Estimation Algorithms for $N = 50$}
+\label{tab:comprehensive_results}
+\begin{tabular}{l|ccc|ccc}
+\toprule
+& \multicolumn{3}{c|}{$w = ER$} & \multicolumn{3}{c}{$w = KR$} \\
+\cmidrule{2-7}
+ & NMSE & NMSE$_w$ & P$_{miss}$ & P$_{FA}$ & NMSE & NMSE$_w$ & P$_{miss}$ & P$_{FA}$ \\
+\midrule
+dir = 1 & & & & & & \\
+TISO & 0.6700 & 1.0700 & 0.0000 & 1.0000 & 0.7100 & 0.7800 & 0.0000 & 1.0000 \\
+TIRSO & 0.6800 & 1.0700 & 0.0000 & 1.0000 & 0.7300 & 0.7900 & 0.0000 & 1.0000 \\
+\midrule
+dir = 0 & & & & & & \\
+P1 w/DB & 0.5200 & 0.0200 & 0.0000 & 0.0000 & 0.6600 & 0.1400 & 0.0000 & 0.0100 \\
+P1 w/ADB & 0.5300 & 0.0300 & 0.0000 & 0.0000 & 0.6700 & 0.2100 & 0.0100 & 0.0000 \\
+P2 w/DB & 0.5800 & 0.2000 & 0.0200 & 0.0100 & 0.7000 & 0.3300 & 0.0100 & 0.5300 \\
+P2 w/ADB & 0.5900 & 0.2200 & 0.0300 & 0.0500 & 0.7600 & 0.5100 & 0.0200 & 0.6100 \\
+\midrule[1.5pt]
+& \multicolumn{3}{c|}{$w = RANDOM$} & \multicolumn{3}{c}{$w = SBM$} \\
+\cmidrule{2-7}
+ & NMSE & NMSE$_w$ & P$_{miss}$ & P$_{FA}$ & NMSE & NMSE$_w$ & P$_{miss}$ & P$_{FA}$ \\
+\midrule
+dir = 1 & & & & & & \\
+TISO & 0.6700 & 1.0700 & 0.0000 & 1.0000 & 0.8600 & 1.5000 & 0.0000 & 1.0000 \\
+TIRSO & 0.6800 & 1.0700 & 0.0000 & 1.0000 & 0.8800 & 1.4600 & 0.0000 & 1.0000 \\
+\midrule
+dir = 0 & & & & & & \\
+P1 w/DB & 0.5500 & 0.0600 & 0.0000 & 0.0000 & 0.8400 & 0.1100 & 0.1200 & 0.1200 \\
+P1 w/ADB & 0.5600 & 0.0700 & 0.0100 & 0.0000 & 0.8300 & 0.1500 & 0.1000 & 0.2500 \\
+P2 w/DB & 0.5400 & 0.0400 & 0.0000 & 1.0000 & 0.8000 & 0.2000 & 0.0000 & 0.9600 \\
+P2 w/ADB & 0.5400 & 0.0800 & 0.0000 & 1.0000 & 0.7800 & 0.2500 & 0.0300 & 0.9100 \\
+\bottomrule
+\end{tabular}
+\end{table*}
