@@ -1,15 +1,22 @@
+# main.py
 import torch
 import hydra
 import pickle
 import os
+import numpy as np
 
 from omegaconf import OmegaConf, DictConfig
 from src.data_generation import generate_data
 from src.utils import set_seed
 from src.models.adaptive.AdaCGP import AdaCGP
-from src.models.adaptive.AdaVAR import AdaVAR
 from src.models.adaptive.TISO import TISO
 from src.models.adaptive.TIRSO import TIRSO
+from src.models.adaptive.SDSEM import SDSEM
+from src.models.batch.GLasso import GLasso
+from src.models.batch.GLSigRep import GLSigRep
+from src.models.batch.GrangerVAR import GrangerVAR
+from src.models.batch.VAR import VAR
+from src.models.batch.PMIME import PMIME
 from src.eval_metrics import save_results
 
 def get_model(name):
@@ -17,17 +24,21 @@ def get_model(name):
         'AdaCGP': AdaCGP,
         'TISO': TISO,
         'TIRSO': TIRSO,
-        'AdaVAR': AdaVAR
+        'SDSEM': SDSEM,
+        'GLasso': GLasso,
+        'GLSigRep': GLSigRep,
+        'GrangerVAR': GrangerVAR,
+        'VAR': VAR,
+        'PMIME': PMIME
     }
     if name not in models:
         raise ValueError(f"Model {name} not implemented")
     return models[name]
 
 def get_save_path():
-    sweep = hydra.core.hydra_config.HydraConfig.get().sweep
-    return sweep.dir, sweep.subdir
+    return hydra.core.hydra_config.HydraConfig.get().run.dir
 
-@hydra.main(version_base=None, config_path="config", config_name="config_sweep")
+@hydra.main(version_base=None, config_path="config", config_name="config")
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
 
@@ -54,19 +65,21 @@ def main(cfg: DictConfig):
             'graph_filters_flat': graph_filters_flat
         }
         results = model.run(**model_inputs)
-        results['weight_matrix'] = weight_matrix
 
         # Save results
-        dir, subdir = get_save_path()
-        save_path = os.path.join(dir, subdir)
+        save_path = get_save_path()
         error_metric = save_results(cfg.model.name, cfg.model.hyperparams.patience, results, save_path, cfg.get('dump_results', False))
 
         if results[error_metric][-1] != results[error_metric][-1]:
-            return 1e6
-        return results[error_metric][-1]
+            return 2
+        return 1
     except Exception as e:
         print(e)
-        return 1e6
+        # print a stack trace
+        import traceback
+        traceback.print_exc()
+
+        return 2
 
 if __name__ == "__main__":
     main()

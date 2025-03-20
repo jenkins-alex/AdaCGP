@@ -9,4 +9,4 @@ defaults:
   - _self_
   - data: cgp
   - model: adacgp
-  - graph: pl
+  - graph: random

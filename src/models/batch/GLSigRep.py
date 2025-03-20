@@ -4,7 +4,7 @@ from sklearn.covariance import empirical_covariance, graphical_lasso
 from scipy import optimize
 import scipy.linalg as la
 
-class GraphSmooth:
+class GLSigRep:
     """
     Implementation of graph Laplacian learning using smoothness prior:
 
@@ -22,7 +22,7 @@ class GraphSmooth:
     
     def predict_topology(self, data, t):
         N = data.shape[1]
-        X_window = data[t-self._P_cov:t, :].T
+        X_window = data[t-1:t, :].T
         L_opt, _, obj_values = self._alternating_optimization(X_window)
         W = np.diag(np.diag(L_opt)) - L_opt  # L -> W assuming no self loops
         latest_obj_fn = obj_values[-1]
@@ -34,32 +34,54 @@ class GraphSmooth:
         results = {
             'pred_error': [], 'w_error': [], 'matrices': [],
             'percentage_correct_elements': [], 'num_non_zero_elements': [],
-            'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': [1]
+            'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': []
         }
 
         # init params
+        lowest_error = 1e10
         y = np.array(y)
         weight_matrix = np.array(weight_matrix) if weight_matrix is not None else None
         m_y = y[:, :, 0]
         T, N = m_y.shape
 
-        with tqdm(range(self._P_cov, T)) as pbar:
-            for t in pbar:  # in paper, t=P,...
-                # receive data y[t]
-                ma_error = results['pred_error_recursive_moving_average'][-1]
-                if self._patience is not None:
-                    if (t-self._P_cov) > self._patience:
-                        break
+        with tqdm(range(1, T)) as pbar:
+            for t in pbar:
 
                 ##################################
                 ######### COMPUTE W ##############
                 ##################################
-                W, e = self.predict_topology(m_y, t)
+                try:
+                    W, e = self.predict_topology(m_y, t)
+                except Exception as exception:
+                    W = np.zeros((N, N))
+                    e = 0.0
+
+                if len(results['pred_error_recursive_moving_average']) == 0:
+                    results['pred_error_recursive_moving_average'].append(e)
+                    continue
+
+                ##################################
+                ######### CHECK CONVERGENCE ######
+                ##################################
+                ma_error = results['pred_error_recursive_moving_average'][-1]
+                if lowest_error != 0:
+                    relative_improvement = (lowest_error - ma_error) / lowest_error
+                else:
+                    relative_improvement = float('inf') if ma_error < lowest_error else 0
+
+                if relative_improvement > self._min_delta_percent:
+                    lowest_error = ma_error
+                    patience_left = self._patience
+                else:
+                    if t > self._patience:
+                        patience_left -= 1
+
+                if patience_left == 0:
+                    break
 
                 ##################################
                 ######### COMPUTE ERRORS #########
                 ##################################
-
                 norm_error = e
                 results['pred_error'].append(norm_error)
                 ma_error = self._ma_alpha * norm_error + (1 - self._ma_alpha) * results['pred_error_recursive_moving_average'][-1]
@@ -80,7 +102,7 @@ class GraphSmooth:
                     # save results for p_miss: probability of missing a non-zero element in W
                     results['p_miss'].append(((W == 0) * (weight_matrix != 0)).sum().item() / (weight_matrix != 0).sum().item())
                     results['p_false_alarm'].append(((W != 0) * (weight_matrix == 0)).sum().item() / (weight_matrix == 0).sum().item())
-                pbar.set_postfix({'MA y error': ma_error})
+                pbar.set_postfix({'MA y error': ma_error, 'W error': norm_w_error})
                 if 'append_all_matrices' in kwargs.keys() and kwargs['append_all_matrices']:
                     results['matrices'].append(W)
         results['matrices'].append(W)
@@ -173,10 +195,7 @@ class GraphSmooth:
                 ],
                 options={'maxiter': max_iters, 'gtol': tol, 'verbose': 0}
             )
-            
-            if not result.success:
-                print(f"Warning: L optimization not fully successful. Message: {result.message}")
-            
+
             # Convert vech(L) to matrix form
             vech_L_opt = result.x
             L_opt = self._vech_to_matrix(vech_L_opt, n)
@@ -184,8 +203,6 @@ class GraphSmooth:
             return L_opt, result.success, result.message
                 
         except Exception as e:
-            print(f"Error in optimize_L: {str(e)}")
-            # Return a fallback valid Laplacian matrix
             L_fallback = self._create_laplacian(n)
             return L_fallback, False, str(e)
 
@@ -214,14 +231,10 @@ class GraphSmooth:
                 chol_factor = la.cholesky(I_plus_alphaL, lower=True)
                 Y = la.cho_solve((chol_factor, True), X)
             except np.linalg.LinAlgError:
-                # Fallback to direct solve if Cholesky fails
-                print("Warning: Cholesky factorization failed. Using direct solve.")
                 Y = np.linalg.solve(I_plus_alphaL, X)
             return Y
         
         except Exception as e:
-            print(f"Error in optimize_Y: {str(e)}")
-            # Return X as fallback
             return X.copy()
 
     def _alternating_optimization(self, X):
@@ -242,13 +255,9 @@ class GraphSmooth:
         obj_values = []
         
         for iter in range(self._max_iters):
-            Y_prev = Y.copy()
-            L_prev = L.copy()
-            
+
             # step 1: Optimize L given Y
             L, success_L, message_L = self._optimize_L(Y, self._alpha, self._beta, n, max_iters=self._max_iters, tol=self._tol)
-            if not success_L:
-                print(f"Warning at iteration {iter+1}: {message_L}")
 
             # step 2: Optimize Y given L
             Y = self._optimize_Y(X, L, self._alpha, n)
@@ -256,22 +265,7 @@ class GraphSmooth:
             # compute the objective value
             obj_val = np.sum((X - Y)**2) + self._alpha * np.trace(Y.T @ L @ Y) + self._beta * np.sum(L**2)
             obj_values.append(obj_val)
-            
-            # Print progress
-            if iter % 5 == 0 or iter == self._max_iters - 1:
-                pass
-                # print(f"Iteration {iter+1}/{max_iters}, Objective: {obj_val:.6f}")
-            
-            # Check convergence - using relative change in both Y and L
-            Y_diff = np.linalg.norm(Y - Y_prev) / (np.linalg.norm(Y_prev) + 1e-10)
-            L_diff = np.linalg.norm(L - L_prev) / (np.linalg.norm(L_prev) + 1e-10)
-            if Y_diff < self._tol and L_diff < self._tol:
-                # print(f"Converged after {iter+1} iterations")
-                break
-    
-        if iter == self._max_iters - 1:
-            pass
-            # print(f"Maximum iterations reached ({max_iters})")
+
         return L, Y, obj_values
 
     def _create_duplication_matrix(self, n):

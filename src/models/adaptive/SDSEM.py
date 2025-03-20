@@ -9,11 +9,14 @@ class SDSEM:
     Tracking switched dynamic network topologies from information cascades.
     IEEE Transactions on Signal Processing, 65(4), 985-997.
 
+    Code adapted from https://github.com/bbaingana/dynetinf
+
     Implemented for S=1, i.e. no switching between different weight matrices.
     """
     def __init__(self, N, hyperparams, device):
         self.N = N
         self.set_hyperparameters(hyperparams)
+        self._forget_t = 0.0
 
     def set_hyperparameters(self, hyperparams):
         for param, value in hyperparams.items():
@@ -103,13 +106,14 @@ class SDSEM:
         results = {
             'pred_error': [], 'w_error': [], 'matrices': [],
             'percentage_correct_elements': [], 'num_non_zero_elements': [],
-            'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': [1]
+            'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': [0]
         }
 
         # init params
         y = np.array(y)
         weight_matrix = np.array(weight_matrix) if weight_matrix is not None else None
         T, N, C = y.shape
+        assert C == 1, "Only univariate time series are supported"
 
         # initialization
         bhat = np.asmatrix(np.zeros((N, 1)))
@@ -117,16 +121,30 @@ class SDSEM:
         Ahat = np.asmatrix(np.ones((N, N)))
         Ahat_old = Ahat.copy()
 
-        # error vector
-        err = []
+        lowest_error = 1e10
         
         with tqdm(range(T)) as pbar:
             for t in pbar:
                 # receive data y[t]
                 ma_error = results['pred_error_recursive_moving_average'][-1]
-                if self._patience is not None:
+
+                ##################################
+                ######### CHECK CONVERGENCE ######
+                ##################################
+                if lowest_error != 0:
+                    relative_improvement = (lowest_error - ma_error) / lowest_error
+                else:
+                    relative_improvement = float('inf') if ma_error < lowest_error else 0
+
+                if relative_improvement > self._min_delta_percent:
+                    lowest_error = ma_error
+                    patience_left = self._patience
+                else:
                     if t > self._patience:
-                        break
+                        patience_left -= 1
+
+                if patience_left == 0:
+                    break
 
                 # extract data from the y array
                 Yt = np.asmatrix(y[t, :, :])  # Shape (N, 1)
@@ -152,7 +170,8 @@ class SDSEM:
                 result_dict = self.fista(X, Ptau, Qtau, Ahat, Ahat_old, 
                                 bhat, bhat_old, self._forget_t, lamb_t, self._kmax)
                 W = np.array(result_dict['Ahat'])
-                y_pred = 0.0  # no forecast in this model
+                b = np.array(result_dict['bhat']).flatten()
+                y_pred = W @ m_y[t] + np.diag(b) @ X
 
                 ##################################
                 ######### COMPUTE ERRORS #########

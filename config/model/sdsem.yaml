@@ -1,0 +1,8 @@
+name: 'SDSEM'
+hyperparams:
+  forget: 0.95
+  lamb: 1
+  kmax: 4
+  patience: 500
+  min_delta_percent: 0.01
+  ma_alpha: 0.1

@@ -8,5 +8,5 @@ device: 'cpu'
 defaults:
   - _self_
   - data: cgp
-  - model: tiso
+  - model: var
   - graph: random

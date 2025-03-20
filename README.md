@@ -32,25 +32,65 @@ If you find this code useful for your research, please cite our paper:
 
 ### 1. Simulation Study
 
-Run hyperparameter searches to find optimal configurations for different graph topologies:
+#### Hyperparameter searches
+To recreate our results, first run hyperparameter searches to find optimal configurations for different models and graph topologies:
 
+**AdaCGP**
 ```bash
-python experiments/run_hyperparameter_search.py
+python -m experiments.sweep --config-path ../config --config-name config_sweep
 ```
 
-Best configurations for different graph types:
-
-- **Erdős-Rényi graphs**: `alpha=0.01, beta=0.05, mu=0.1`
-- **Barabási-Albert graphs**: `alpha=0.005, beta=0.01, mu=0.2`
-- **Small-world graphs**: `alpha=0.01, beta=0.02, mu=0.15`
-
-To run a simulation with the best configuration:
-
+**TISO**
 ```bash
-python experiments/run_adacgp.py --graph_type erdos_renyi --alpha 0.01 --beta 0.05 --mu 0.1
+python -m experiments.sweep --config-path ../config --config-name config_sweep_tiso
 ```
 
-### 2. Benchmarking
+**TIRSO**
+```bash
+python -m experiments.sweep --config-path ../config --config-name config_sweep_tirso
+```
+
+**SD-SEM**
+```bash
+python -m experiments.sweep --config-path ../config --config-name config_sweep_sdsem
+```
+
+**GLasso**
+```bash
+python -m experiments.sweep --config-path ../config --config-name config_sweep_glasso
+```
+
+**GL-SigRep**
+```bash
+python -m experiments.sweep --config-path ../config --config-name config_sweep_glsigrep
+```
+
+#### Best configurations
+
+To run the models with the best configuration and different random seeds:
+
+**AdaCGP**
+```bash
+python -m experiments.best_sweep_mc_adacgp --config-path ../config --config-name config_best_sweep_mc
+```
+
+**TISO**
+```bash
+python -m experiments.best_sweep_mc_tiso --config-path ../config --config-name config_best_sweep_mc_tiso
+```
+
+**TIRSO**
+```bash
+python -m experiments.best_sweep_mc_tirso --config-path ../config --config-name config_best_sweep_mc_tirso
+```
+
+**GLasso**
+```bash
+python -m experiments.best_sweep_mc_glasso --config-path ../config --config-name config_best_sweep_mc_glasso
+```
+
+
+### 2. Computational complexity
 
 Evaluate the computational complexity of AdaCGP compared to baselines:
 
@@ -63,7 +103,15 @@ This will generate plots comparing:
 - Memory usage vs. number of nodes
 - Convergence rate analysis
 
-### 3. Ventricular Fibrillation Data Analysis
+### 3. AdaCGP sparsity experiments
+
+To recreate our sparsity experiments:
+
+```bash
+python -m experiments.sweep --config-path ../config --config-name config_sweep_sparsity
+```
+
+### 4. Ventricular Fibrillation Data Analysis
 
 Analyze real-world ventricular fibrillation (VF) data with AdaCGP:
 

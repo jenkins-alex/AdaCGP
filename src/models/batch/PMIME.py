@@ -8,25 +8,51 @@ from sklearn.neighbors import KDTree
 from math import sqrt
 
 
-class rPMIME:
+class PMIME:
     """
     Python wrapped for PMIME, Kugiumtzis, D. (2013).
     Direct-coupling information measure from nonuniform embedding.
     Physical Review E—Statistical, Nonlinear, and Soft Matter Physics, 87(6), 062918.
     """
-    def __init__(self, N, hyperparams, **kwargs):
+    def __init__(self, N, hyperparams, device, **kwargs):
         self.N = N
         self.set_hyperparameters(hyperparams)
 
     def set_hyperparameters(self, hyperparams):
         for param, value in hyperparams.items():
             setattr(self, f"_{param}", value)
-    
-    def predict_next_step(self, data, t):
+
+    def predict_topology(self, data, t):
         N = data.shape[1]
-        X = data[t-self._P_window:t, :]
-        W, _ = PMIME(X, Lmax=self._Lmax, T=self._T, nnei=self._nnei, A=self._A, showtxt=self._showtxt)
-        return W, 0.0
+        X = data[:t, :]
+        W, ecC = _PMIME(X, Lmax=self._Lmax, T=self._T, nnei=self._nnei, A=self._A, showtxt=self._showtxt)
+        mean_cmi = self.calculate_average_cmi(ecC)
+        return W, mean_cmi
+
+    def calculate_average_cmi(self, ecC):
+        """
+        Calculate the average CMI ratio across all variables.
+        
+        Parameters:
+        ecC (list): List of embedding cycle arrays for each variable
+        
+        Returns:
+        float: Average CMI ratio across all variables
+        """
+        all_valid = []
+        
+        # loop over embedding cycles of variables
+        for var_cycles in ecC:
+            if var_cycles is not None and len(var_cycles) > 0:
+                # extract cmi (column 2) and filter out NaNs
+                ratios = [row[2] for row in var_cycles if len(row) > 4 and not np.isnan(row[2])]
+                all_valid.extend(ratios)
+        
+        # calculate mean if we have any valid values
+        if all_valid:
+            return np.mean(all_valid)
+        else:
+            return np.nan  # no valid values found
 
     def run(self, y, weight_matrix=None, **kwargs):
         # This function computes an estimate via TISO
@@ -34,44 +60,62 @@ class rPMIME:
         results = {
             'pred_error': [], 'w_error': [], 'matrices': [],
             'percentage_correct_elements': [], 'num_non_zero_elements': [],
-            'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': [1]
+            'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': []
         }
 
         # init params
+        lowest_error = 1e10
         y = np.array(y)
         weight_matrix = np.array(weight_matrix) if weight_matrix is not None else None
         m_y = y[:, :, 0]
         T, N = m_y.shape
 
-        with tqdm(range(self._P_window, T)) as pbar:
-            for t in pbar:  # in paper, t=P,...
-                # receive data y[t]
-                ma_error = results['pred_error_recursive_moving_average'][-1]
+        with tqdm(range(self._min_samples+1, T)) as pbar:
+            for t in pbar:
 
-                ##################################
-                ######### CHECK CONVERGENCE ######
-                ##################################
-                if self._patience is not None:
-                    if (t-self._P_window) > self._patience:
-                        break
-                    
                 ##################################
                 ######### COMPUTE W ##############
                 ##################################
-                W, y_pred = self.predict_next_step(m_y, t)
+                try:
+                    W, e = self.predict_topology(m_y, t)
+                except Exception as exception:
+                    W = np.zeros((N, N))
+                    e = 0.0
+
+                if len(results['pred_error_recursive_moving_average']) == 0:
+                    results['pred_error_recursive_moving_average'].append(e)
+                    continue
+                
+                ##################################
+                ######### CHECK CONVERGENCE ######
+                ##################################
+                ma_error = results['pred_error_recursive_moving_average'][-1]
+                if lowest_error != 0:
+                    relative_improvement = (lowest_error - ma_error) / lowest_error
+                else:
+                    relative_improvement = float('inf') if ma_error < lowest_error else 0
+
+                if relative_improvement > self._min_delta_percent:
+                    lowest_error = ma_error
+                    patience_left = self._patience
+                else:
+                    if t > self._patience:
+                        patience_left -= 1
+
+                if patience_left == 0:
+                    break
 
                 ##################################
                 ######### COMPUTE ERRORS #########
                 ##################################
 
-                # Compute squared error of signal forecast from graph filters
-                e = m_y[t] - y_pred
-                norm_error = np.linalg.norm(e)**2 / np.linalg.norm(m_y[t])**2
+                # compute squared error of the objective
+                norm_error = e
                 results['pred_error'].append(norm_error)
                 ma_error = self._ma_alpha * norm_error + (1 - self._ma_alpha) * results['pred_error_recursive_moving_average'][-1]
                 results['pred_error_recursive_moving_average'].append(ma_error)
         
-                # Compute squared error of W estimation
+                # compute squared error of W estimation
                 if weight_matrix is not None:
                     weight_matrix_error = weight_matrix - W
                     norm_w_error = np.linalg.norm(weight_matrix_error)**2 / np.linalg.norm(weight_matrix)**2
@@ -93,8 +137,10 @@ class rPMIME:
         return results
 
 
-def PMIME(allM, Lmax=None, T=None, nnei=None, A=None, showtxt=None):
+def _PMIME(allM, Lmax=None, T=None, nnei=None, A=None, showtxt=None):
     """
+    Code adapted from https://github.com/dkugiu/Matlab/tree/master/PMIME
+
     function [RM,ecC] = PMIME(allM,Lmax,T,nnei,A,showtxt)
     PMIME (Partial Mutual Information on Mixed Embedding)
     computes the measure R_{X->Y|Z} for all combinations of X and Y time
@@ -320,7 +366,8 @@ def PMIME(allM, Lmax=None, T=None, nnei=None, A=None, showtxt=None):
             lagind = (ind+1) % int(Lmax)
             if lagind == 0:
                 lagind = int(Lmax)
-            new_row = np.array([varind, lagind, cmiV[ind], miwV[ind], cmiV[ind]/miwV[ind]])
+            cmi_ratio = (cmiV[ind] / miwV[ind]) if not np.isnan(cmiV[ind]) and not np.isnan(miwV[ind]) and not miwV[ind] == 0 else np.nan
+            new_row = np.array([varind, lagind, cmiV[ind], miwV[ind], cmi_ratio])
             ecC[iK] = np.vstack((ecC[iK], new_row))
             if len(iembV) == 1:
                 if showtxt >= 2:

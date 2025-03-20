@@ -10,21 +10,22 @@ hydra:
     _target_: hydra_plugins.hydra_optuna_sweeper.optuna_sweeper.OptunaSweeper
     storage: null
     direction: minimize
-    study_name: TISO
+    study_name: GLasso
     n_jobs: 5
   
     params:
       +data_seed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
       optimise_metric: choice('nmse_pred_alg1')
 
-sweep_results_dir: 'logs/TISO/cgp_simulated/2024-09-17/17-57-50'
+sweep_results_dir: 'logs/GLasso/cgp_simulated/2025-03-20/12-05-16'
 optimise_metric: 'nmse_w_alg1'
 optimise_direction: 'min'
 dump_results: true
 model:
-  name: 'TISO'
+  name: 'GLasso'
   hyperparams:
     patience: 1000
+
 data:
   name: 'cgp_simulated'
 

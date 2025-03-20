@@ -1,8 +1,13 @@
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
-from sklearn.covariance import empirical_covariance, graphical_lasso
+from statsmodels.tsa.api import VAR as VAR_model
 
-class GraphLasso:
+
+class VAR:
+    """
+    Implementation of VAR model for time series forecasting and causal inference.
+    """
     def __init__(self, N, hyperparams, device):
         self.N = N
         self.set_hyperparameters(hyperparams)
@@ -10,15 +15,29 @@ class GraphLasso:
     def set_hyperparameters(self, hyperparams):
         for param, value in hyperparams.items():
             setattr(self, f"_{param}", value)
-    
-    def predict_topology(self, data, t):
-        N = data.shape[1]
 
-        X_window = data[t-self._P_cov:t, :]
-        emp_cov = empirical_covariance(X_window, assume_centered=True)
-        _, precision, costs = graphical_lasso(emp_cov.astype(float), alpha=self._alpha, return_costs=True)
-        latest_obj_fn, _ = costs[-1]
-        return precision, latest_obj_fn
+    def identify_causal_W(self, var_model_out):
+        # VAR causality
+        coefs = var_model_out.coefs
+        coefs_matrix = np.stack([coefs[lag] for lag in range(self._P)])
+        causal = ((coefs_matrix == 0).sum(axis=0)) != self._P
+        W = np.linalg.norm(coefs_matrix, ord=2, axis=0) * causal  # use magnitude of psi as weights
+        return W
+
+    def predict_next_step(self, data, t):
+        N = data.shape[1]
+        train_data = data[:t, :]  # Current time steps
+
+        # Create a pandas DataFrame for the VAR model
+        df = pd.DataFrame(train_data, columns=[f'var_{i}' for i in range(N)])
+
+        model = VAR_model(df)
+        results = model.fit(self._P)
+
+        W = self.identify_causal_W(results)
+        last_observations = train_data[-self._P:, :]
+        y_pred = results.forecast(last_observations, steps=1)[0]
+        return W, y_pred
         
     def run(self, y, weight_matrix=None, **kwargs):
         # This function computes an estimate via TISO
@@ -30,29 +49,51 @@ class GraphLasso:
         }
 
         # init params
+        lowest_error = 1e10
         y = np.array(y)
         weight_matrix = np.array(weight_matrix) if weight_matrix is not None else None
         m_y = y[:, :, 0]
         T, N = m_y.shape
 
-        with tqdm(range(self._P_cov, T)) as pbar:
-            for t in pbar:  # in paper, t=P,...
-                # receive data y[t]
+        with tqdm(range(self._min_samples, T)) as pbar:
+            for t in pbar:
                 ma_error = results['pred_error_recursive_moving_average'][-1]
-                if self._patience is not None:
-                    if (t-self._P_cov) > self._patience:
-                        break
+                
+                ##################################
+                ######### CHECK CONVERGENCE ######
+                ##################################
+                if lowest_error != 0:
+                    relative_improvement = (lowest_error - ma_error) / lowest_error
+                else:
+                    relative_improvement = float('inf') if ma_error < lowest_error else 0
+
+                if relative_improvement > self._min_delta_percent:
+                    lowest_error = ma_error
+                    patience_left = self._patience
+                else:
+                    if t > self._patience:
+                        patience_left -= 1
+
+                if patience_left == 0:
+                    break
 
                 ##################################
                 ######### COMPUTE W ##############
                 ##################################
-                W, e = self.predict_topology(m_y, t)
+                try:
+                    W, y_pred = self.predict_next_step(m_y, t)
+                except Exception as e:
+                    # use empty prediction and weight matrix
+                    W = np.zeros((N, N))
+                    y_pred = np.zeros(N)
 
                 ##################################
                 ######### COMPUTE ERRORS #########
                 ##################################
 
-                norm_error = e
+                # Compute squared error of signal forecast from graph filters
+                e = m_y[t] - y_pred
+                norm_error = np.linalg.norm(e)**2 / np.linalg.norm(m_y[t])**2
                 results['pred_error'].append(norm_error)
                 ma_error = self._ma_alpha * norm_error + (1 - self._ma_alpha) * results['pred_error_recursive_moving_average'][-1]
                 results['pred_error_recursive_moving_average'].append(ma_error)

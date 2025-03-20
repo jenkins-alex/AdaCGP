@@ -11,10 +11,10 @@ hydra:
     storage: null
     direction: minimize
     study_name: TIRSO
-    n_jobs: 10
+    n_jobs: 5
   
     params:
-      +data_seed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+      +data_seed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
       optimise_metric: choice('nmse_pred_alg1')
 
 sweep_results_dir: 'logs/TIRSO/cgp_simulated/2024-09-18/10-07-17'
