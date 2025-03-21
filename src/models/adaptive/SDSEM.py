@@ -1,6 +1,10 @@
-import numpy as np
-from tqdm import tqdm
+import gc
+import time
 import math
+import tracemalloc
+import numpy as np
+
+from tqdm import tqdm
 
 class SDSEM:
     """
@@ -21,6 +25,10 @@ class SDSEM:
     def set_hyperparameters(self, hyperparams):
         for param, value in hyperparams.items():
             setattr(self, f"_{param}", value)
+        if not hasattr(self, '_use_eig_stepsize'):
+            self._use_eig_stepsize = True
+        if not hasattr(self, '_record_complexity'):
+            self._record_complexity = False
 
     def softThresh(self, M, mu):
         P = np.asmatrix(np.zeros(M.shape))
@@ -44,7 +52,11 @@ class SDSEM:
         M1 = np.hstack((Ptau, Qtau*X.T))
         M2 = np.hstack((X*Qtau.T, forget_t*X*X.T))
         M3 = np.vstack((M1, M2))
-        L = self.maxEigVal(M3)
+        if self._use_eig_stepsize:
+            L = self.maxEigVal(M3)
+            stepsize = 1.0 / L
+        else:
+            stepsize = self._stepsize
 
         result_dict = {}
 
@@ -78,10 +90,10 @@ class SDSEM:
                 # Step 2: update B (gradient descent)
                 bhat_old[i, 0] = bhat[i, 0]
 
-                bhat[i, 0] = b_ii - (1.0/L)*nablaf_bii[0,0]
+                bhat[i, 0] = b_ii - stepsize * nablaf_bii[0,0]
 
                 # Step 3: update A (gradient descent + soft-thresholding)
-                a_i_tilde = self.softThresh(a_i_tilde-(1.0/L)*nablaf_ai, lamb_t/L)
+                a_i_tilde = self.softThresh(a_i_tilde-stepsize*nablaf_ai, lamb_t/L)
                 Ahat_old[i, :] = Ahat[i, :]
 
 
@@ -108,6 +120,9 @@ class SDSEM:
             'percentage_correct_elements': [], 'num_non_zero_elements': [],
             'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': [0]
         }
+        if self._record_complexity:
+            results['iteration_time'] = []
+            results['iteration_memory'] = []
 
         # init params
         patience_left = self._patience
@@ -126,7 +141,13 @@ class SDSEM:
         
         with tqdm(range(T)) as pbar:
             for t in pbar:
-                # receive data y[t]
+
+                # start measuring iteration memory and time complexity
+                if self._record_complexity:
+                    gc.collect()
+                    tracemalloc.start()
+                    start_time = time.time()
+
                 ma_error = results['pred_error_recursive_moving_average'][-1]
 
                 ##################################
@@ -172,13 +193,22 @@ class SDSEM:
                                 bhat, bhat_old, self._forget_t, lamb_t, self._kmax)
                 W = np.array(result_dict['Ahat'])
                 b = np.array(result_dict['bhat']).flatten()
+
+                # Compute squared error of prediction
                 y_pred = W @ m_y[t] + np.diag(b) @ X
+
+                # end measuring iteration memory and time complexity
+                if self._record_complexity:
+                    end_time = time.time()
+                    _, peak_size = tracemalloc.get_traced_memory()
+                    tracemalloc.stop()
+                    execution_time = end_time - start_time
+                    results['iteration_time'].append(execution_time)
+                    results['iteration_memory'].append(peak_size / (1024 * 1024))
 
                 ##################################
                 ######### COMPUTE ERRORS #########
                 ##################################
-
-                # Compute squared error of signal forecast from graph filters
                 e = m_y[t] - y_pred
                 norm_error = np.linalg.norm(e)**2 / np.linalg.norm(m_y[t])**2
                 results['pred_error'].append(norm_error)

@@ -1,3 +1,6 @@
+import gc
+import time
+import tracemalloc
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -15,6 +18,10 @@ class VAR:
     def set_hyperparameters(self, hyperparams):
         for param, value in hyperparams.items():
             setattr(self, f"_{param}", value)
+        if not hasattr(self, '_train_steps_list'):
+            self._train_steps_list = None
+        if not hasattr(self, '_record_complexity'):
+            self._record_complexity = False
 
     def identify_causal_W(self, var_model_out):
         # VAR causality
@@ -47,6 +54,9 @@ class VAR:
             'percentage_correct_elements': [], 'num_non_zero_elements': [],
             'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': [1]
         }
+        if self._record_complexity:
+            results['iteration_time'] = []
+            results['iteration_memory'] = []
 
         # init params
         lowest_error = 1e10
@@ -56,8 +66,17 @@ class VAR:
         m_y = y[:, :, 0]
         T, N = m_y.shape
 
-        with tqdm(range(self._min_samples, T)) as pbar:
+        # training loop
+        iter_range = range(self._min_samples, T) if self._train_steps_list is None else self._train_steps_list
+        with tqdm(iter_range) as pbar:
             for t in pbar:
+
+                # start measuring iteration memory and time complexity
+                if self._record_complexity:
+                    gc.collect()
+                    tracemalloc.start()
+                    start_time = time.time()
+
                 ma_error = results['pred_error_recursive_moving_average'][-1]
                 
                 ##################################
@@ -87,6 +106,15 @@ class VAR:
                     # use empty prediction and weight matrix
                     W = np.zeros((N, N))
                     y_pred = np.zeros(N)
+
+                # end measuring iteration memory and time complexity
+                if self._record_complexity:
+                    end_time = time.time()
+                    _, peak_size = tracemalloc.get_traced_memory()
+                    tracemalloc.stop()
+                    execution_time = end_time - start_time
+                    results['iteration_time'].append(execution_time)
+                    results['iteration_memory'].append(peak_size / (1024 * 1024))
 
                 ##################################
                 ######### COMPUTE ERRORS #########

@@ -109,11 +109,6 @@ python -m experiments.sweep --config-path ../config --config-name config_sweep_m
 python -m experiments.sweep --config-path ../config --config-name config_sweep_mc_granger
 ```
 
-**PMIME**
-```bash
-python -m experiments.sweep --config-path ../config --config-name config_sweep_mc_pmime
-```
-
 After running these, our results table and figures can be recreating by running:
 ```bash
 python generate_simulation_results_table.py

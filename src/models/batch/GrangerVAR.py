@@ -1,3 +1,6 @@
+import gc
+import time
+import tracemalloc
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -15,10 +18,14 @@ class GrangerVAR:
     def set_hyperparameters(self, hyperparams):
         for param, value in hyperparams.items():
             setattr(self, f"_{param}", value)
-        
-        # Set default value for gc_window if not provided
         if not hasattr(self, "_gc_window"):
-            self._gc_window = 20  # Default to 20 samples for GC testing
+            self._gc_window = 20  # Granger causality evaluation window size
+        if not hasattr(self, '_use_gc_during_training'):
+            self._use_gc_during_training = False
+        if not hasattr(self, '_train_steps_list'):
+            self._train_steps_list = None
+        if not hasattr(self, '_record_complexity'):
+            self._record_complexity = False
 
     def identify_var_causal_W(self, var_model_out):
         # VAR causality - faster method
@@ -57,7 +64,10 @@ class GrangerVAR:
         results = model.fit(self._P)
 
         # Use faster VAR causality during training
-        W = self.identify_var_causal_W(results)
+        if self._use_gc_during_training:
+            W = self.identify_granger_causal_W(results)
+        else:
+            W = self.identify_var_causal_W(results)
         last_observations = train_data[-self._P:, :]
         y_pred = results.forecast(last_observations, steps=1)[0]
         return W, y_pred, results  # Return the model results for later GC testing
@@ -71,6 +81,9 @@ class GrangerVAR:
             'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': [1],
             'gc_window': self._gc_window
         }
+        if self._record_complexity:
+            results['iteration_time'] = []
+            results['iteration_memory'] = []
 
         # initialize a ring buffer for storing the most recent VAR model outputs
         var_model_outputs = []
@@ -84,10 +97,19 @@ class GrangerVAR:
         m_y = y[:, :, 0] if y.ndim > 2 else y
         T, N = m_y.shape
 
-        with tqdm(range(self._min_samples, T)) as pbar:
+        # training loop
+        iter_range = range(self._min_samples, T) if self._train_steps_list is None else self._train_steps_list
+        with tqdm(iter_range) as pbar:
             for t in pbar:
+
+                # start measuring iteration memory and time complexity
+                if self._record_complexity:
+                    gc.collect()
+                    tracemalloc.start()
+                    start_time = time.time()
+
                 ma_error = results['pred_error_recursive_moving_average'][-1]
-                
+
                 ##################################
                 ######### CHECK CONVERGENCE ######
                 ##################################
@@ -112,18 +134,28 @@ class GrangerVAR:
                 try:
                     W, y_pred, var_out = self.predict_next_step(m_y, t)
                     
-                    # Only keep recent models when approaching convergence
-                    # This ensures we don't waste memory on early models
-                    if patience_left < self._patience / 2:
-                        # Store the VAR model output in the ring buffer
-                        if len(var_model_outputs) >= buffer_size:
-                            var_model_outputs.pop(0)  # Remove oldest
-                        var_model_outputs.append((t, var_out))
-                    
+                    if self._use_gc_during_training:
+                        # Only keep recent models when approaching convergence
+                        # This ensures we don't waste memory on early models
+                        if patience_left < self._patience / 2:
+                            # Store the VAR model output in the ring buffer
+                            if len(var_model_outputs) >= buffer_size:
+                                var_model_outputs.pop(0)  # Remove oldest
+                            var_model_outputs.append((t, var_out))
+
                 except Exception as e:
                     # use empty prediction and weight matrix
                     W = np.zeros((N, N))
                     y_pred = np.zeros(N)
+
+                # end measuring iteration memory and time complexity
+                if self._record_complexity:
+                    end_time = time.time()
+                    _, peak_size = tracemalloc.get_traced_memory()
+                    tracemalloc.stop()
+                    execution_time = end_time - start_time
+                    results['iteration_time'].append(execution_time)
+                    results['iteration_memory'].append(peak_size / (1024 * 1024))
 
                 ##################################
                 ######### COMPUTE ERRORS #########
@@ -156,58 +188,59 @@ class GrangerVAR:
                 
                 if 'append_all_matrices' in kwargs.keys() and kwargs['append_all_matrices']:
                     results['matrices'].append(W)
-        
-        # Compute the final matrix using the faster method for consistency with training
-        final_W_var = W
-        results['matrices'].append(final_W_var)
-        
-        # Create temporary storage for GC results
-        gc_results = {
-            'w_error': [], 'percentage_correct_elements': [], 
-            'num_non_zero_elements': [], 'p_miss': [], 'p_false_alarm': []
-        }
-        
-        # Process the stored VAR model outputs with GC testing
-        for t_idx, (t, var_out) in enumerate(var_model_outputs):
-            try:
-                W_gc = self.identify_granger_causal_W(var_out)
+
+        if not self._use_gc_during_training:
+            # Compute the final matrix using the faster method for consistency with training
+            final_W_var = W
+            results['matrices'].append(final_W_var)
+            
+            # Create temporary storage for GC results
+            gc_results = {
+                'w_error': [], 'percentage_correct_elements': [], 
+                'num_non_zero_elements': [], 'p_miss': [], 'p_false_alarm': []
+            }
+            
+            # Process the stored VAR model outputs with GC testing
+            for t_idx, (t, var_out) in enumerate(var_model_outputs):
+                try:
+                    W_gc = self.identify_granger_causal_W(var_out)
+                    
+                    # Compute metrics using GC-based weights
+                    if weight_matrix is not None:
+                        weight_matrix_error = weight_matrix - W_gc
+                        norm_w_error = np.linalg.norm(weight_matrix_error)**2 / np.linalg.norm(weight_matrix)**2
+                        gc_results['w_error'].append(norm_w_error)
+                        gc_results['num_non_zero_elements'].append((W_gc != 0).sum())
+
+                        # Compute percentage of elements correctly identified in W
+                        total = (weight_matrix != 0).sum()
+                        frac = ((W_gc != 0) * (weight_matrix != 0)).sum() / total
+                        gc_results['percentage_correct_elements'].append(frac)
+
+                        # Save results for p_miss and p_false_alarm
+                        gc_results['p_miss'].append(((W_gc == 0) * (weight_matrix != 0)).sum().item() / (weight_matrix != 0).sum().item())
+                        gc_results['p_false_alarm'].append(((W_gc != 0) * (weight_matrix == 0)).sum().item() / (weight_matrix == 0).sum().item())
                 
-                # Compute metrics using GC-based weights
-                if weight_matrix is not None:
-                    weight_matrix_error = weight_matrix - W_gc
-                    norm_w_error = np.linalg.norm(weight_matrix_error)**2 / np.linalg.norm(weight_matrix)**2
-                    gc_results['w_error'].append(norm_w_error)
-                    gc_results['num_non_zero_elements'].append((W_gc != 0).sum())
-
-                    # Compute percentage of elements correctly identified in W
-                    total = (weight_matrix != 0).sum()
-                    frac = ((W_gc != 0) * (weight_matrix != 0)).sum() / total
-                    gc_results['percentage_correct_elements'].append(frac)
-
-                    # Save results for p_miss and p_false_alarm
-                    gc_results['p_miss'].append(((W_gc == 0) * (weight_matrix != 0)).sum().item() / (weight_matrix != 0).sum().item())
-                    gc_results['p_false_alarm'].append(((W_gc != 0) * (weight_matrix == 0)).sum().item() / (weight_matrix == 0).sum().item())
+                except Exception as e:
+                    continue
             
-            except Exception as e:
-                continue
-        
-        # Replace the last 'gc_window' entries with GC-based metrics if available
-        if gc_results['w_error']:
-            # Calculate how many entries to replace (minimum of length of gc_results or gc_window)
-            replace_count = min(len(gc_results['w_error']), self._gc_window)
-            start_idx = len(results['w_error']) - replace_count
+            # Replace the last 'gc_window' entries with GC-based metrics if available
+            if gc_results['w_error']:
+                # Calculate how many entries to replace (minimum of length of gc_results or gc_window)
+                replace_count = min(len(gc_results['w_error']), self._gc_window)
+                start_idx = len(results['w_error']) - replace_count
+                
+                # Replace the metrics for the last 'gc_window' number of entries
+                for key in ['w_error', 'percentage_correct_elements', 'num_non_zero_elements', 'p_miss', 'p_false_alarm']:
+                    for i in range(replace_count):
+                        if start_idx + i < len(results[key]) and i < len(gc_results[key]):
+                            results[key][start_idx + i] = gc_results[key][i]
             
-            # Replace the metrics for the last 'gc_window' number of entries
-            for key in ['w_error', 'percentage_correct_elements', 'num_non_zero_elements', 'p_miss', 'p_false_alarm']:
-                for i in range(replace_count):
-                    if start_idx + i < len(results[key]) and i < len(gc_results[key]):
-                        results[key][start_idx + i] = gc_results[key][i]
-        
-        # Compute final GC-based W matrix for the most recent model output
-        if var_model_outputs:
-            _, final_var_out = var_model_outputs[-1]
-            final_W_gc = self.identify_granger_causal_W(final_var_out)
-            # Replace the last matrix with the GC-based one
-            results['matrices'][-1] = final_W_gc
-        
+            # Compute final GC-based W matrix for the most recent model output
+            if var_model_outputs:
+                _, final_var_out = var_model_outputs[-1]
+                final_W_gc = self.identify_granger_causal_W(final_var_out)
+                # Replace the last matrix with the GC-based one
+                results['matrices'][-1] = final_W_gc
+
         return results

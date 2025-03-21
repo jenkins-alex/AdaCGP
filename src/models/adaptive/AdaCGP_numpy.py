@@ -1,4 +1,8 @@
+import gc
+import time
+import tracemalloc
 import numpy as np
+
 from tqdm import tqdm
 from src.line_search import wolfe_line_search
 from src.utils import get_each_graph_filter_np, pack_graph_filters_np
@@ -38,6 +42,14 @@ class AdaCGP:
     def set_hyperparameters(self, hyperparams):
         for param, value in hyperparams.items():
             setattr(self, f"_{param}", value)
+        if not hasattr(self, '_use_eig_stepsize'):
+            self._use_eig_stepsize = True
+        if not hasattr(self, '_use_armijo_w'):
+            self._use_armijo_w = True
+        if not hasattr(self, '_use_armijo_h'):
+            self._use_armijo_h = True
+        if not hasattr(self, '_record_complexity'):
+            self._record_complexity = False
 
     def __getattr__(self, name):
         if name.startswith('_'):
@@ -66,6 +78,9 @@ class AdaCGP:
             'prob_miss': [], 'prob_false_alarm': [], 'pred_error_recursive_moving_average': [1],
             'pred_error_recursive_moving_average_h': [1], 'precision': [], 'recall': [], 'f1': []
         }
+        if self._record_complexity:
+            results['iteration_time'] = []
+            results['iteration_memory'] = []
 
         patience_left = self._patience
         switch_algorithm = False
@@ -78,6 +93,13 @@ class AdaCGP:
 
         with tqdm(range(process_length)) as pbar:
             for t in pbar:
+            
+                # start measuring iteration memory and time complexity
+                if self._record_complexity:
+                    gc.collect()
+                    tracemalloc.start()
+                    start_time = time.time()
+
                 ##################################
                 ######### GET DATA AT T ##########
                 ##################################
@@ -144,7 +166,6 @@ class AdaCGP:
 
                 # Psi loss update
                 psi_loss = 0.5 * (self._lambda * psi_loss + np.linalg.norm(yt - np.matmul(self.Psi, xPt))**2)
-                results['psi_losses'].append(psi_loss.item())
                 
                 if not self._alternate:
                     if not switch_algorithm:
@@ -197,27 +218,42 @@ class AdaCGP:
                     h_g = np.matmul(self.C, self.h) - self.u
 
                 ######## ARMIJO STEPSIZE #######
-                alpha = wolfe_line_search(
-                    objective_function_h_lms,
-                    gradient_function_h_lms,
-                    update_function_h_lms,
-                    self.h.flatten(),
-                    step_init=self._h_stepsize,
-                    beta=0.5,
-                    args=(Ys, yt, self._lambda, self.C, self.u, self._instant_h, nu_t, self._epsilon),
-                    max_iter=10
-                )
-                h_stepsize = alpha
+                if self._use_armijo_h:
+                    alpha = wolfe_line_search(
+                        objective_function_h_lms,
+                        gradient_function_h_lms,
+                        update_function_h_lms,
+                        self.h.flatten(),
+                        step_init=self._h_stepsize,
+                        beta=0.5,
+                        args=(Ys, yt, self._lambda, self.C, self.u, self._instant_h, nu_t, self._epsilon),
+                        max_iter=10
+                    )
+                    h_stepsize = alpha
+                else:
+                    h_stepsize = self._h_stepsize
         
                 ######### UPDATE PARAM #########
                 dh = h_g + nu_t * b
                 self.h = self.h + h_stepsize * dh
                 d_hat_h = np.matmul(Ys, self.h)
 
+                # end measuring iteration memory and time complexity
+                if self._record_complexity:
+                    end_time = time.time()
+                    _, peak_size = tracemalloc.get_traced_memory()
+                    tracemalloc.stop()
+                    execution_time = end_time - start_time
+                    results['iteration_time'].append(execution_time)
+                    results['iteration_memory'].append(peak_size / (1024 * 1024))
+
                 ###################################
                 ######### COMPUTE RESULTS #########
                 ###################################
 
+                # append psi_loss
+                results['psi_losses'].append(psi_loss.item())
+                    
                 # Compute squared error of signal forecast from graph filters
                 d_hat_psi = np.matmul(Psi, xPt)
                 e = yt - d_hat_psi
@@ -305,8 +341,11 @@ class AdaCGP:
         G[mask == 0] = 0
 
         # Compute stepsize
-        eigvals = np.linalg.eigvalsh(self.R0)
-        psi_stepsize = 2 / np.max(np.abs(eigvals))
+        if self._use_eig_stepsize:
+            eigvals = np.linalg.eigvalsh(self.R0)
+            psi_stepsize = 2 / np.max(np.abs(eigvals))
+        else:
+            psi_stepsize = self._psi_stepsize
         A = self.eye_P * psi_stepsize
         for p in range(self._P):
             A[p, p] /= (np.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + self._epsilon)
@@ -348,17 +387,20 @@ class AdaCGP:
         M_1 = self.ones_NxN * self.mus_pt[0] / (np.linalg.norm(xPt[:self.N], ord=2)**2 + self._epsilon)
 
         # Armijo stepsize
-        alpha = wolfe_line_search(
-            objective_function_wstep2_lms,
-            gradient_function_wstep2_lms,
-            update_function_wstep2_lms,
-            self.W.flatten(),
-            step_init=self._w_stepsize,
-            beta=0.5,
-            args=(self.Psi.copy(), self.mus_pt, self._gamma, self.N, self._P),
-            max_iter=10
-        )
-        w_stepsize = alpha
+        if self._use_armijo_w:
+            alpha = wolfe_line_search(
+                objective_function_wstep2_lms,
+                gradient_function_wstep2_lms,
+                update_function_wstep2_lms,
+                self.W.flatten(),
+                step_init=self._w_stepsize,
+                beta=0.5,
+                args=(self.Psi.copy(), self.mus_pt, self._gamma, self.N, self._P),
+                max_iter=10
+            )
+            w_stepsize = alpha
+        else:
+            w_stepsize = self._w_stepsize
 
         # Update param
         self.W_pos = self.W_pos - w_stepsize * (M_1 + V)
@@ -402,11 +444,15 @@ class AdaCGP:
             G = np.matmul(self.Psi, self.R0) - self.P0
 
         # Compute stepsize
-        eigvals = np.linalg.eigvalsh(self.R0)
-        psi_stepsize = 2 / np.max(np.abs(eigvals))
-        A = self.eye_P * psi_stepsize
-        for p in range(self._P):
-            A[p, p] /= (np.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + self._epsilon)
+        if self._use_eig_stepsize:
+            eigvals = np.linalg.eigvalsh(self.R0)
+            psi_stepsize = 2 / np.max(np.abs(eigvals))
+            A = self.eye_P * psi_stepsize
+            for p in range(self._P):
+                A[p, p] /= (np.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + self._epsilon)
+        else:
+            psi_stepsize = self._psi_stepsize
+            A = self.eye_P * psi_stepsize
 
         # Line search
         if self._use_armijo and (t > self._warm_up_steps):

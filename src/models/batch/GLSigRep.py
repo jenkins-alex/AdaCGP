@@ -1,3 +1,6 @@
+import gc
+import time
+import tracemalloc
 import numpy as np
 from tqdm import tqdm
 from sklearn.covariance import empirical_covariance, graphical_lasso
@@ -19,7 +22,11 @@ class GLSigRep:
     def set_hyperparameters(self, hyperparams):
         for param, value in hyperparams.items():
             setattr(self, f"_{param}", value)
-    
+        if not hasattr(self, '_train_steps_list'):
+            self._train_steps_list = None
+        if not hasattr(self, '_record_complexity'):
+            self._record_complexity = False
+
     def predict_topology(self, data, t):
         N = data.shape[1]
         X_window = data[t-1:t, :].T
@@ -36,6 +43,9 @@ class GLSigRep:
             'percentage_correct_elements': [], 'num_non_zero_elements': [],
             'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': []
         }
+        if self._record_complexity:
+            results['iteration_time'] = []
+            results['iteration_memory'] = []
 
         # init params
         lowest_error = 1e10
@@ -45,8 +55,15 @@ class GLSigRep:
         m_y = y[:, :, 0]
         T, N = m_y.shape
 
-        with tqdm(range(1, T)) as pbar:
+        iter_range = range(1, T) if self._train_steps_list is None else self._train_steps_list
+        with tqdm(iter_range) as pbar:
             for t in pbar:
+
+                # start measuring iteration memory and time complexity
+                if self._record_complexity:
+                    gc.collect()
+                    tracemalloc.start()
+                    start_time = time.time()
 
                 ##################################
                 ######### COMPUTE W ##############
@@ -80,6 +97,15 @@ class GLSigRep:
 
                 if patience_left == 0:
                     break
+
+                # end measuring iteration memory and time complexity
+                if self._record_complexity:
+                    end_time = time.time()
+                    _, peak_size = tracemalloc.get_traced_memory()
+                    tracemalloc.stop()
+                    execution_time = end_time - start_time
+                    results['iteration_time'].append(execution_time)
+                    results['iteration_memory'].append(peak_size / (1024 * 1024))
 
                 ##################################
                 ######### COMPUTE ERRORS #########

@@ -1,4 +1,7 @@
 import torch
+import gc
+import time
+import tracemalloc
 import numpy as np
 from tqdm import tqdm
 from src.utils import get_each_graph_filter
@@ -19,7 +22,13 @@ class TIRSO:
         for param, value in hyperparams.items():
             setattr(self, f"_{param}", value)
         self._mu = 1 - self._gamma
-        
+        if not hasattr(self, '_use_eig_stepsize'):
+            self._use_eig_stepsize = True
+        if not hasattr(self, '_default_stepsize'):
+            self._default_stepsize = 0.001
+        if not hasattr(self, '_record_complexity'):
+            self._record_complexity = False
+
     def run(self, y, weight_matrix=None, **kwargs):
         # This function computes an estimate via TISO
 
@@ -28,6 +37,9 @@ class TIRSO:
             'percentage_correct_elements': [], 'num_non_zero_elements': [],
             'p_miss': [], 'p_false_alarm': [], 'pred_error_recursive_moving_average': [1]
         }
+        if self._record_complexity:
+            results['iteration_time'] = []
+            results['iteration_memory'] = []
 
         lowest_error = 1e10
         a_prev = self.m_A_initial  # size N X NP
@@ -47,9 +59,13 @@ class TIRSO:
         t_A = np.zeros((N, N * self._P, T))
 
         with tqdm(range(self._P, T)) as pbar:
-            for t in pbar:  # in paper, t=P,...
-                # receive data y[t]
-                # form g[t] via g[t]= vec([y[t-1],...,y[t-P]]^T)
+            for t in pbar:
+                # start measuring iteration memory and time complexity
+                if self._record_complexity:
+                    gc.collect()
+                    tracemalloc.start()
+                    start_time = time.time()
+
                 ma_error = results['pred_error_recursive_moving_average'][-1]
 
                 ##################################
@@ -78,10 +94,13 @@ class TIRSO:
                 g = aux.flatten()
 
                 # compute stepsize
-                R = np.outer(g, g)
-                eigs = torch.lobpcg(torch.tensor(R), largest=True)
-                stepsize = 2 / (eigs[0].item())
-                stepsize /= (np.linalg.norm(g, ord=2)**2 + self._epsilon)
+                if self._use_eig_stepsize:
+                    R = np.outer(g, g)
+                    eigs = torch.lobpcg(torch.tensor(R), largest=True)
+                    stepsize = 2 / (eigs[0].item())
+                    stepsize /= (np.linalg.norm(g, ord=2)**2 + self._epsilon)
+                else:
+                    stepsize = self._default_stepsize
 
                 # update Phi
                 Phi_t = self._gamma * Phi_prev + self._mu * R
@@ -120,6 +139,15 @@ class TIRSO:
                 causal = ((psi == 0).sum(axis=1)) != self._P
                 W = np.linalg.norm(psi, ord=2, axis=1) * causal  # use magnitude of psi as weights
                 
+                # end measuring iteration memory and time complexity
+                if self._record_complexity:
+                    end_time = time.time()
+                    _, peak_size = tracemalloc.get_traced_memory()
+                    tracemalloc.stop()
+                    execution_time = end_time - start_time
+                    results['iteration_time'].append(execution_time)
+                    results['iteration_memory'].append(peak_size / (1024 * 1024))
+
                 ##################################
                 ######### COMPUTE ERRORS #########
                 ##################################
