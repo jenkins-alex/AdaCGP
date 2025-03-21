@@ -96,34 +96,3 @@ def pack_graph_filters_np(filters, N, P):
         return np.concatenate(filters, axis=1).reshape(N, N * P)
     else:
         return filters.reshape(N, N * P)
-
-def get_size_recursive(obj, seen=None):
-    """
-    Recursively calculates the size of objects with improved accuracy
-    for nested structures and NumPy arrays
-    """
-    if seen is None:
-        seen = set()
-    
-    obj_id = id(obj)
-    if obj_id in seen:
-        return 0
-    seen.add(obj_id)
-    
-    # Start with the base size of the object
-    size = sys.getsizeof(obj)
-    
-    # Special handling for NumPy arrays
-    if isinstance(obj, np.ndarray):
-        # Use nbytes to get the total memory used by the array's data
-        size += obj.nbytes
-    
-    # Recursive size calculation for containers
-    if isinstance(obj, dict):
-        # Recursively calculate size of keys and values
-        size += sum(get_size_recursive(k, seen) for k in obj.keys())
-        size += sum(get_size_recursive(v, seen) for v in obj.values())
-    elif isinstance(obj, (list, tuple, set, frozenset)):
-        size += sum(get_size_recursive(i, seen) for i in obj)
-    
-    return size
