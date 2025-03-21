@@ -18,7 +18,7 @@ class GLasso:
         emp_cov = empirical_covariance(X_window, assume_centered=True)
         _, precision, costs = graphical_lasso(emp_cov.astype(float), alpha=self._alpha, return_costs=True)
         latest_obj_fn, _ = costs[-1]
-        return precision, latest_obj_fn
+        return precision, np.abs(latest_obj_fn)
 
     def run(self, y, weight_matrix=None, **kwargs):
         # This function computes an estimate via TISO
@@ -31,6 +31,7 @@ class GLasso:
 
         # init params
         lowest_error = 1e10
+        patience_left = self._patience
         y = np.array(y)
         weight_matrix = np.array(weight_matrix) if weight_matrix is not None else None
         m_y = y[:, :, 0]

@@ -1,0 +1,41 @@
+hydra:
+  mode: MULTIRUN
+  sweep:
+    dir: logs/${model.name}/${data.name}/best_sweep_mc/${now:%Y-%m-%d}/${now:%H-%M-%S}/${optimise_metric}
+    subdir: ${data_seed}/graph_${graph.graph_type}/N_${data.N}
+
+  sweeper:
+    sampler:
+      _target_: optuna.samplers.GridSampler
+    _target_: hydra_plugins.hydra_optuna_sweeper.optuna_sweeper.OptunaSweeper
+    storage: null
+    direction: minimize
+    study_name: PMIME
+    n_jobs: 5
+    n_trials: 1000
+
+    params:
+      +data_seed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+      graph: choice(random, kr, sbm, er)
+      data.N: choice(50)
+      model.hyperparams.patience: choice(1000)
+
+optimise_metric: 'nmse_pred_alg1'
+dump_results: true
+model:
+  hyperparams:
+    patience: 1000
+data:
+  name: 'cgp_simulated'
+
+device: 'cpu'
+seed: 42
+
+defaults:
+  - _self_
+  - data: cgp
+  - model: pmime
+  - graph: kr
+  - override hydra/sweeper: optuna
+  - override /hydra/sweeper/sampler: grid
+  - override hydra/launcher: joblib

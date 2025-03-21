@@ -50,6 +50,7 @@ class VAR:
 
         # init params
         lowest_error = 1e10
+        patience_left = self._patience
         y = np.array(y)
         weight_matrix = np.array(weight_matrix) if weight_matrix is not None else None
         m_y = y[:, :, 0]

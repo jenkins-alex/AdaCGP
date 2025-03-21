@@ -1,9 +1,10 @@
 name: 'GLSigRep'
 hyperparams:
-  patience: 500
+  patience: 100
   max_iters: 5
   alpha: 0.01
   beta: 0.01
   tol: 1e-6
+  non_zero_threshold: 10e-4
   min_delta_percent: 0.01
   ma_alpha: 0.1

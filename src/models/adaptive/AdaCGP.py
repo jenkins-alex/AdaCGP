@@ -67,7 +67,8 @@ class AdaCGP:
             'prob_miss': [], 'prob_false_alarm': [], 'pred_error_recursive_moving_average': [1],
             'pred_error_recursive_moving_average_h': [1], 'precision': [], 'recall': [], 'f1': []
         }
- 
+
+        patience_left = self._patience
         switch_algorithm = False
         first_alg_converged = False
         second_alg_converged = False
@@ -412,7 +413,7 @@ class AdaCGP:
             A[p, p] /= (torch.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2)**2 + self._epsilon)
 
         # Line search
-        if self.use_armijo and (t > self._warm_up_steps):
+        if self._use_armijo and (t > self._warm_up_steps):
             Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
             direction_unpacked = get_each_graph_filter(G, self.N, self._P)
             for p in range(self._P):

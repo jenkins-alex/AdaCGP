@@ -110,6 +110,7 @@ class SDSEM:
         }
 
         # init params
+        patience_left = self._patience
         y = np.array(y)
         weight_matrix = np.array(weight_matrix) if weight_matrix is not None else None
         T, N, C = y.shape

@@ -2,6 +2,6 @@ name: 'VAR'
 hyperparams:
   P: 3
   min_samples: ${data.N}
-  patience: 500
+  patience: 100
   min_delta_percent: 0.01
   ma_alpha: 0.1

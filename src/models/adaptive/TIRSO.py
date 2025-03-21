@@ -33,6 +33,7 @@ class TIRSO:
         a_prev = self.m_A_initial  # size N X NP
 
         # init params
+        patience_left = self._patience
         y = np.array(y)
         weight_matrix = np.array(weight_matrix) if weight_matrix is not None else None
         m_y = y[:, :, 0].T

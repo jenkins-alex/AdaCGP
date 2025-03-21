@@ -68,7 +68,8 @@ def main(cfg: DictConfig):
 
         # Save results
         save_path = get_save_path()
-        error_metric = save_results(cfg.model.name, cfg.model.hyperparams.patience, results, save_path, cfg.get('dump_results', False))
+        eval_window = cfg.model.hyperparams.patience if cfg.model.name != 'GrangerVAR' else cfg.model.hyperparams.gc_window
+        error_metric = save_results(cfg.model.name, eval_window, results, save_path, cfg.get('dump_results', False))
 
         if results[error_metric][-1] != results[error_metric][-1]:
             return 2

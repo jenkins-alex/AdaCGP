@@ -2,7 +2,7 @@ hydra:
   mode: MULTIRUN
   sweep:
     dir: logs/${model.name}/${data.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
-    subdir: graph_${graph.graph_type}/N_${data.N}/alpha_${model.hyperparams.alpha}/beta_${model.hyperparams.beta}/seed_${seed}
+    subdir: graph_${graph.graph_type}/N_${data.N}/forget_${model.hyperparams.forget}/lamb_${model.hyperparams.lamb}/seed_${seed}
 
   sweeper:
     sampler:
@@ -10,16 +10,16 @@ hydra:
     _target_: hydra_plugins.hydra_optuna_sweeper.optuna_sweeper.OptunaSweeper
     storage: null
     direction: minimize
-    study_name: GLSigRep
-    n_jobs: 10
+    study_name: SDSEM
+    n_jobs: 5
     n_trials: 1000
   
     params:
       seed: 42
       graph: choice(random, kr, sbm, er)
       data.N: choice(50)
-      model.hyperparams.alpha: choice(0.001, 0.00316228, 0.01, 0.0316228, 0.1)
-      model.hyperparams.beta: choice(0.01, 0.0316228, 0.1, 0.316228, 1.0)
+      model.hyperparams.forget: choice(0.80, 0.81, 0.82, 0.83, 0.84, 0.85, 0.86, 0.87, 0.88, 0.89, 0.90, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99)
+      model.hyperparams.lamb: choice(1, 5, 10, 15, 20, 25)
 
 device: 'cpu'
 seed: 42
@@ -27,7 +27,7 @@ seed: 42
 defaults:
   - _self_
   - data: cgp
-  - model: glsigrep
+  - model: sdsem
   - graph: kr
   - override hydra/sweeper: optuna
   - override /hydra/sweeper/sampler: grid

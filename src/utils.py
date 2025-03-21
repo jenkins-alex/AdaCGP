@@ -64,3 +64,34 @@ def pack_graph_filters(filters, N, P):
         torch.tensor: N x NP flattened graph filter
     """
     return torch.cat(filters, dim=1).view(N, N * P)
+
+def get_each_graph_filter_np(Psi, N, P):
+    """return each graph filter from the flattened graph filter
+
+    Args:
+        Psi (numpy.ndarray): N*NP flattened graph filter
+        N (int): number of nodes
+        P (int): order of the filter
+
+    Returns:
+        numpy.ndarray: N x P x N tensor of graph filters
+    """
+    return Psi.reshape(N, P, N)
+
+def pack_graph_filters_np(filters, N, P):
+    """pack graph filters into a matrix
+
+    Args:
+        filters (list or numpy.ndarray): List of filters or N x P x N array of graph filters
+        N (int): number of nodes
+        P (int): order of the filter
+
+    Returns:
+        numpy.ndarray: N x NP flattened graph filter
+    """
+    import numpy as np
+    
+    if isinstance(filters, list):
+        return np.concatenate(filters, axis=1).reshape(N, N * P)
+    else:
+        return filters.reshape(N, N * P)

@@ -26,7 +26,7 @@ class GLSigRep:
         L_opt, _, obj_values = self._alternating_optimization(X_window)
         W = np.diag(np.diag(L_opt)) - L_opt  # L -> W assuming no self loops
         latest_obj_fn = obj_values[-1]
-        return W, latest_obj_fn
+        return W, np.abs(latest_obj_fn)
         
     def run(self, y, weight_matrix=None, **kwargs):
         # This function computes an estimate via TISO
@@ -39,6 +39,7 @@ class GLSigRep:
 
         # init params
         lowest_error = 1e10
+        patience_left = self._patience
         y = np.array(y)
         weight_matrix = np.array(weight_matrix) if weight_matrix is not None else None
         m_y = y[:, :, 0]
@@ -52,6 +53,7 @@ class GLSigRep:
                 ##################################
                 try:
                     W, e = self.predict_topology(m_y, t)
+                    W[np.abs(W) < self._non_zero_threshold] = 0  # !! threshold elements as in paper
                 except Exception as exception:
                     W = np.zeros((N, N))
                     e = 0.0

@@ -84,9 +84,43 @@ python -m experiments.best_sweep_mc_tiso --config-path ../config --config-name c
 python -m experiments.best_sweep_mc_tirso --config-path ../config --config-name config_best_sweep_mc_tirso
 ```
 
+**SD-SEM**
+```bash
+python -m experiments.best_sweep_mc_sdsem --config-path ../config --config-name config_best_sweep_mc_sdsem
+```
+
 **GLasso**
 ```bash
 python -m experiments.best_sweep_mc_glasso --config-path ../config --config-name config_best_sweep_mc_glasso
+```
+
+**GLSigRep**
+```bash
+python -m experiments.best_sweep_mc_glsigrep --config-path ../config --config-name config_best_sweep_mc_glsigrep
+```
+
+**VAR**
+```bash
+python -m experiments.sweep --config-path ../config --config-name config_sweep_mc_var
+```
+
+**VAR + Granger causality**
+```bash
+python -m experiments.sweep --config-path ../config --config-name config_sweep_mc_granger
+```
+
+**PMIME**
+```bash
+python -m experiments.sweep --config-path ../config --config-name config_sweep_mc_pmime
+```
+
+After running these, our results table and figures can be recreating by running:
+```bash
+python generate_simulation_results_table.py
+```
+and
+```bash
+python generate_simulation_results_figures.py
 ```
 
 
@@ -96,6 +130,11 @@ Evaluate the computational complexity of AdaCGP compared to baselines:
 
 ```bash
 python experiments/run_benchmarks.py --nodes 10 20 50 100 --time_steps 1000
+```
+
+To recreate our computation complexity figures:
+```bash
+python generate_complexity_results_figures.py
 ```
 
 This will generate plots comparing:
@@ -109,6 +148,11 @@ To recreate our sparsity experiments:
 
 ```bash
 python -m experiments.sweep --config-path ../config --config-name config_sweep_sparsity
+```
+
+To recreate our sparsity figures:
+```bash
+python generate_sparsity_results_figures.py
 ```
 
 ### 4. Ventricular Fibrillation Data Analysis

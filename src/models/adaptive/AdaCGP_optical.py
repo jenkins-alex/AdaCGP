@@ -67,7 +67,8 @@ class AdaCGP:
             'prob_miss': [], 'prob_false_alarm': [], 'pred_error_recursive_moving_average': [1],
             'pred_error_recursive_moving_average_h': [1]
         }
- 
+
+        patience_left = self._patience
         switch_algorithm = False
         first_alg_converged = False
         second_alg_converged = False
