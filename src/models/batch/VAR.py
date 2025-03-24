@@ -75,7 +75,7 @@ class VAR:
                 if self._record_complexity:
                     gc.collect()
                     tracemalloc.start()
-                    start_time = time.time()
+                    start_time = time.process_time()
 
                 ma_error = results['pred_error_recursive_moving_average'][-1]
                 
@@ -109,7 +109,7 @@ class VAR:
 
                 # end measuring iteration memory and time complexity
                 if self._record_complexity:
-                    end_time = time.time()
+                    end_time = time.process_time()
                     _, peak_size = tracemalloc.get_traced_memory()
                     tracemalloc.stop()
                     execution_time = end_time - start_time

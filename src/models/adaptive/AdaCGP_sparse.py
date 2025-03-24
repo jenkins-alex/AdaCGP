@@ -6,9 +6,12 @@ import numpy as np
 from tqdm import tqdm
 from src.line_search import wolfe_line_search
 from src.utils import get_each_graph_filter_np, pack_graph_filters_np
+from scipy import sparse
+from scipy.sparse import linalg as splinalg
 
 class AdaCGP:
     """Adaptive Causal Graph Process model
+    Implemented with sparse matrix multiplications
     """
     def __init__(self, N, hyperparams, device):
         self.N = N
@@ -19,18 +22,21 @@ class AdaCGP:
     def initialize_parameters(self):
         N, P = self.N, self._P
         
-        self.Psi_pos = np.zeros((N, N*P), dtype=np.float32)
-        self.Psi_neg = np.zeros((N, N*P), dtype=np.float32)
-        self.Psi = np.zeros((N, N*P), dtype=np.float32)
+        self.M = int(P * (P + 3) / 2)
+
+        # convert these parameters to sparse matrices
+        self.Psi_pos = sparse.lil_matrix((N, N*P), dtype=np.float32)
+        self.Psi_neg = sparse.lil_matrix((N, N*P), dtype=np.float32)
+        self.Psi = sparse.lil_matrix((N, N*P), dtype=np.float32)
+        self.W = sparse.lil_matrix((N, N), dtype=np.float32)
+        self.W_pos = sparse.lil_matrix((N, N), dtype=np.float32)
+        self.W_neg = sparse.lil_matrix((N, N), dtype=np.float32)
+
+        # dense matrices
+        self.h = np.zeros((self.M, 1), dtype=np.float32)
         self.P0 = np.zeros((N, N*P), dtype=np.float32)
         self.Q = np.zeros((N, N*P), dtype=np.float32)
         self.R0 = np.zeros((N*P, N*P), dtype=np.float32)
-        self.W = np.zeros((N, N), dtype=np.float32)
-        self.W_pos = np.zeros((N, N), dtype=np.float32)
-        self.W_neg = np.zeros((N, N), dtype=np.float32)
-        self.M = int(P * (P + 3) / 2)
-        self.h = np.zeros((self.M, 1), dtype=np.float32)
-        # self.h[1] = 1
         self.C = np.zeros((self.M, self.M), dtype=np.float32)
         self.u = np.zeros((self.M, 1), dtype=np.float32)
         self.eye_NxN = np.eye(N, N)
@@ -52,6 +58,8 @@ class AdaCGP:
             self._record_complexity = False
         if not hasattr(self, '_train_steps_list'):
             self._train_steps_list = None
+        if not hasattr(self, '_use_gt_sparsity'):
+            self._use_gt_sparsity = False
 
     def __getattr__(self, name):
         if name.startswith('_'):
@@ -71,6 +79,12 @@ class AdaCGP:
             filter_coefficients (numpy.ndarray, optional): true filter coefficients if known. Defaults to None.
             graph_filter_matrix (numpy.ndarray, optional): true graph filter matrix if known. Defaults to None.
         """
+
+        if self._use_gt_sparsity:
+            assert weight_matrix is not None, "Must provide weight matrix if using ground truth sparsity"
+            assert graph_filter_matrix is not None, "Must provide graph filter matrix if using ground truth sparsity"
+            self._weight_mask = sparse.csr_matrix(weight_matrix != 0, dtype=np.float32)
+            self._psi_mask = sparse.csr_matrix(graph_filter_matrix != 0, dtype=np.float32)
 
         results = {
             'pred_error': [], 'pred_error_from_h': [], 'filter_error': [],
@@ -175,7 +189,8 @@ class AdaCGP:
                         break
 
                 # Psi loss update
-                psi_loss = 0.5 * (self._lambda * psi_loss + np.linalg.norm(yt - np.matmul(self.Psi, xPt))**2)
+                psi_loss = 0.5 * (self._lambda * psi_loss + np.linalg.norm(yt - self.Psi @ xPt)**2)
+
                 if not self._alternate:
                     if not switch_algorithm:
                         psi_stepsize = self.update_psi(xPt, yt, t, ma_error, pbar, psi_loss)
@@ -211,20 +226,20 @@ class AdaCGP:
                 for i in range(1, self._P + 1):
                     x_t_m_i = Xpt[i-1, :]
                     for j in range(i + 1):
-                        Yij = np.matmul(np.linalg.matrix_power(W, j), x_t_m_i)
+                        Yij = np.array(splinalg.matrix_power(W, j) @ x_t_m_i).flatten()
                         Ys.append(Yij)
                 Ys = np.stack(Ys, axis=1)  # (N, M)
-        
+
                 b = np.sign(self.h) / (self._epsilon + self.h)
-                nu_t = self._nu * np.linalg.norm((np.matmul(Ys.T, Ys)).flatten(), ord=np.inf)
+                nu_t = self._nu * np.linalg.norm((Ys.T @ Ys).flatten(), ord=np.inf)
         
                 if self._instant_h:
-                    h_e = yt - np.matmul(Ys, self.h)
-                    h_g = np.matmul(Ys.T, h_e)
+                    h_e = yt - Ys @ self.h
+                    h_g = Ys.T @ h_e
                 else:
-                    self.C = self._lambda * self.C + np.matmul(Ys.T, Ys)
-                    self.u = self._lambda * self.u + np.matmul(Ys.T, yt)
-                    h_g = np.matmul(self.C, self.h) - self.u
+                    self.C = self._lambda * self.C + Ys.T @ Ys
+                    self.u = self._lambda * self.u + Ys.T @ yt
+                    h_g = self.C @ self.h - self.u
 
                 ######## ARMIJO STEPSIZE #######
                 if self._use_armijo_h:
@@ -245,7 +260,7 @@ class AdaCGP:
                 ######### UPDATE PARAM #########
                 dh = h_g + nu_t * b
                 self.h = self.h + h_stepsize * dh
-                d_hat_h = np.matmul(Ys, self.h)
+                d_hat_h = Ys @ self.h
 
                 # end measuring iteration memory and time complexity
                 if self._record_complexity:
@@ -264,7 +279,7 @@ class AdaCGP:
                 results['psi_losses'].append(psi_loss.item())
                     
                 # Compute squared error of signal forecast from graph filters
-                d_hat_psi = np.matmul(Psi, xPt)
+                d_hat_psi = Psi @ xPt
                 e = yt - d_hat_psi
                 norm_error = np.linalg.norm(e)**2 / np.linalg.norm(yt)**2
                 results['pred_error'].append(norm_error.item())
@@ -311,7 +326,7 @@ class AdaCGP:
                     # save results for p_miss: probability of missing a non-zero element in W
                     results['p_miss'].append(((W == 0) * (weight_matrix != 0)).sum().item() / (weight_matrix != 0).sum().item())
                     results['p_false_alarm'].append(((W != 0) * (weight_matrix == 0)).sum().item() / (weight_matrix == 0).sum().item())
-            
+
                 # Compute the error for filter coefficient estimation
                 if filter_coefficients is not None:
                     coeff_error = filter_coefficients - self.h.flatten()
@@ -326,8 +341,8 @@ class AdaCGP:
     
     def perform_debiasing(self, xPt, yt, t, debiasing_W, psi_loss):
         # Update R0 and P0
-        self.R0 = np.add(self._lambda * self.R0, np.matmul(xPt, xPt.T))
-        self.P0 = np.add(self._lambda * self.P0, np.matmul(yt, xPt.T))
+        self.R0 = self._lambda * self.R0 + xPt @ xPt.T
+        self.P0 = self._lambda * self.P0 + yt @ xPt.T
 
         # Compute mus
         mu_scales = []
@@ -342,11 +357,11 @@ class AdaCGP:
         mus_pt = self.mus * np.stack(mu_scales)
 
         # Compute G
-        G = np.matmul(self.Psi, self.R0) - self.P0
+        G = self.Psi @ self.R0 - self.P0
 
         # Apply mask
-        masks = [np.linalg.matrix_power(debiasing_W, i+1) for i in range(self._P)]
-        mask = pack_graph_filters_np(masks, self.N, self._P)
+        masks = [splinalg.matrix_power(debiasing_W, i+1) for i in range(self._P)]
+        mask = pack_graph_filters_np(masks.toarray(), self.N, self._P)
         G[mask == 0] = 0
 
         # Compute stepsize
@@ -361,7 +376,7 @@ class AdaCGP:
 
         # Armijo line search
         if self._use_armijo and (t > self._warm_up_steps):
-            Psi_unpacked = get_each_graph_filter_np(self.Psi, self.N, self._P)
+            Psi_unpacked = get_each_graph_filter_np(self.Psi.toarray(), self.N, self._P)
             for p in range(self._P):
                 alpha = wolfe_line_search(
                     objective_function_psi_debias,
@@ -376,22 +391,22 @@ class AdaCGP:
                 A[p, p] = alpha
 
         # Update parameters
-        Psi = self.Psi - np.matmul(G, np.kron(A, self.eye_N))
-        Psi_unpacked = get_each_graph_filter_np(Psi, self.N, self._P)
-        W = Psi_unpacked[:, 0, :] * debiasing_W
+        Psi = self.Psi - G @ np.kron(A, self.eye_N)
+        Psi_unpacked = get_each_graph_filter_np(Psi.toarray(), self.N, self._P)
+        W = sparse.csr_matrix(Psi_unpacked[:, 0, :]) * debiasing_W
         return Psi, W, psi_stepsize
 
     def update_w_path_2(self):
-        Psi_unpacked = get_each_graph_filter_np(self.Psi, self.N, self._P)
-        self.W = Psi_unpacked[:, 0, :]
+        Psi_unpacked = get_each_graph_filter_np(self.Psi.toarray(), self.N, self._P)
+        self.W = sparse.csr_matrix(Psi_unpacked[:, 0, :])
 
     def update_w_path_1(self, xPt):
         # Compute S
-        Psi_unpacked = get_each_graph_filter_np(self.Psi, self.N, self._P)
+        Psi_unpacked = get_each_graph_filter_np(self.Psi.toarray(), self.N, self._P)
         S = second_comm_term_mnlms(Psi_unpacked, self.W, self._P)
 
         # Compute gradient
-        Psi_1 = Psi_unpacked[:, 0, :]
+        Psi_1 = sparse.csr_matrix(Psi_unpacked[:, 0, :])
         V = self.W - (Psi_1 - self._gamma * S)
         M_1 = self.ones_NxN * self.mus_pt[0] / (np.linalg.norm(xPt[:self.N], ord=2)**2 + self._epsilon)
 
@@ -416,19 +431,26 @@ class AdaCGP:
         self.W_neg = self.W_neg - w_stepsize * (M_1 - V)
         self.W_pos[self.W_pos < 0] = 0
         self.W_neg[self.W_neg < 0] = 0
+
+        # Convert to sparse
+        self.W_pos = sparse.csr_matrix(self.W_pos)
+        self.W_neg = sparse.csr_matrix(self.W_neg)
         self.W = self.W_pos - self.W_neg
+
+        if self._use_gt_sparsity:
+            self.W = self.W.multiply(self._weight_mask)
+
         return w_stepsize
 
     def update_psi(self, xPt, yt, t, ma_error, pbar, psi_loss):
         # Update R0 and P0
-        self.R0 = np.add(self._lambda * self.R0, np.matmul(xPt, xPt.T))
-        self.P0 = np.add(self._lambda * self.P0, np.matmul(yt, xPt.T))
+        self.R0 = self._lambda * self.R0 + xPt @ xPt.T
+        self.P0 = self._lambda * self.P0 + yt @ xPt.T
 
         # Compute mus
         mu_scales = []
         Q_unpacked = get_each_graph_filter_np(self.Q, self.N, self._P)
         P0_unpacked = get_each_graph_filter_np(self.P0, self.N, self._P)
-        
         
         for p in range(self._P):
             Qp = Q_unpacked[:, p, :]
@@ -443,14 +465,14 @@ class AdaCGP:
         include_comm_term = not self._use_path_1
         if include_comm_term:
             Qs = []
-            Psi_unpacked = get_each_graph_filter_np(self.Psi, self.N, self._P)
+            Psi_unpacked = get_each_graph_filter_np(self.Psi.toarray(), self.N, self._P)
             for p in range(self._P):
                 Qp = comm_term_mnlms(Psi_unpacked, p, self._P)
                 Qs.append(Qp)
             self.Q = pack_graph_filters_np(Qs, self.N, self._P)
-            G = np.matmul(self.Psi, self.R0) - (self.P0 - self._gamma * self.Q)
+            G = self.Psi @ self.R0 - (self.P0 - self._gamma * self.Q)
         else:
-            G = np.matmul(self.Psi, self.R0) - self.P0
+            G = self.Psi @ self.R0 - self.P0
 
         # Compute stepsize
         if self._use_eig_stepsize:
@@ -481,52 +503,61 @@ class AdaCGP:
                 A[p, p] = alpha
 
         # Update Psi
-        dPsi_pos = - (np.add(M, G)) @ np.kron(A, self.eye_N)
-        dPsi_neg = - (np.subtract(M, G)) @ np.kron(A, self.eye_N)
-        self.Psi_pos = np.add(self.Psi_pos, dPsi_pos)
-        self.Psi_neg = np.add(self.Psi_neg, dPsi_neg)
+        dPsi_pos = - (M + G) @ np.kron(A, self.eye_N)
+        dPsi_neg = - (M + G) @ np.kron(A, self.eye_N)
+        self.Psi_pos = self.Psi_pos + dPsi_pos
+        self.Psi_neg = self.Psi_neg + dPsi_neg
 
         # Projection onto non-negative space
         self.Psi_pos[self.Psi_pos < 0] = 0
         self.Psi_neg[self.Psi_neg < 0] = 0
-        self.Psi = np.subtract(self.Psi_pos, self.Psi_neg)
+
+        # Convert to sparse
+        self.Psi_pos = sparse.csr_matrix(self.Psi_pos)
+        self.Psi_neg = sparse.csr_matrix(self.Psi_neg)
+        self.Psi = self.Psi_pos - self.Psi_neg
+        
+        if self._use_gt_sparsity:
+            self.Psi = self.Psi.multiply(self._psi_mask)
+
         return psi_stepsize
 
 def comm(A, B):
-    return np.matmul(A, B) - np.matmul(B, A)
+    return A @ B - B @ A
  
 def comm_term_mnlms(W, p, P):
     comm_terms = []
     for k in range(P):
         if k == p:
             continue
-        comm_ = np.matmul(comm(W[:, p, :], W[:, k, :]), W[:, k, :].T) + np.matmul(W[:, k, :].T, comm(W[:, p, :], W[:, k, :]))
+        comm_ = comm(sparse.csr_matrix(W[:, p, :]), sparse.csr_matrix(W[:, k, :])) @ sparse.csr_matrix(W[:, k, :]).T + \
+            sparse.csr_matrix(W[:, k, :]).T @ comm(sparse.csr_matrix(W[:, p, :]), sparse.csr_matrix(W[:, k, :]))
         comm_terms.append(comm_)
     return np.sum(np.stack(comm_terms), axis=0)
  
 def second_comm_term_mnlms(W, A, P):
     comm_terms = []
     for k in range(P):
-        comm_ = np.matmul(comm(A, W[:, k, :]), W[:, k, :].T) + np.matmul(W[:, k, :].T, comm(A, W[:, k, :]))
+        comm_ = comm(A, sparse.csr_matrix(W[:, k, :])) @ sparse.csr_matrix(W[:, k, :]).T + sparse.csr_matrix(W[:, k, :]).T @ comm(A, sparse.csr_matrix(W[:, k, :]))
         comm_terms.append(comm_)
     return np.sum(np.stack(comm_terms), axis=0)
  
 def gradient_function_psi_mlms(psi_p_flat, Psi, mus_pt, R0, P0, gamma_, p, include_comm_term, N, P, lambda_, xPt, yt, cumulative_loss, **kwargs):
-    Psi_unpacked = get_each_graph_filter_np(Psi, N, P)
+    Psi_unpacked = get_each_graph_filter_np(Psi.toarray(), N, P)
     psi_p = psi_p_flat.reshape(N, N)
     Psi_unpacked[:, p, :] = psi_p
-    Psi = pack_graph_filters_np([Psi_unpacked[:, i, :] for i in range(P)], N, P)
+    Psi = sparse.csr_matrix(pack_graph_filters_np([Psi_unpacked[:, i, :] for i in range(P)], N, P))
  
     if include_comm_term:
         Qs = []
-        Psi_unpacked = get_each_graph_filter_np(Psi, N, P)
+        Psi_unpacked = get_each_graph_filter_np(Psi.toarray(), N, P)
         for p in range(P):
             Qp = comm_term_mnlms(Psi_unpacked, p, P)
             Qs.append(Qp)
         Q = pack_graph_filters_np(Qs, N, P)
-        G = np.matmul(Psi, R0) - (P0 - gamma_ * Q)
+        G = Psi @ R0 - (P0 - gamma_ * Q)
     else:
-        G = np.matmul(Psi, R0) - P0
+        G = Psi @ R0 - P0
     
     G_unpacked = get_each_graph_filter_np(G, N, P)
     gp = G_unpacked[:, p, :]
@@ -537,7 +568,7 @@ def objective_function_psi_mlms(psi_p_flat, Psi, mus_pt, R0, P0, gamma_, p, incl
     psi_p = psi_p_flat.reshape(N, N)
     Psi_unpacked[:, p, :] = psi_p
     Psi = pack_graph_filters_np([Psi_unpacked[:, i, :] for i in range(P)], N, P)
-    psi_loss = 0.5 * (lambda_ * cumulative_loss + np.linalg.norm(yt - np.matmul(Psi, xPt))**2)
+    psi_loss = 0.5 * (lambda_ * cumulative_loss + np.linalg.norm(yt - Psi @ xPt)**2)
     Psi_unpacked = get_each_graph_filter_np(Psi, N, P)
  
     for i in range(P):
@@ -571,7 +602,7 @@ def gradient_function_psi_debias(psi_p_flat, Psi, mus_pt, R0, P0, gamma_, p, inc
     Psi_new = pack_graph_filters_np(filters, N, P)
     
     # Compute gradient
-    G = np.matmul(Psi_new, R0) - P0
+    G = Psi_new @ R0 - P0
     
     # Apply mask
     masks = [np.linalg.matrix_power(mask_W, i+1) for i in range(P)]
@@ -580,7 +611,7 @@ def gradient_function_psi_debias(psi_p_flat, Psi, mus_pt, R0, P0, gamma_, p, inc
     
     # Extract gradient for this specific filter
     G_unpacked = get_each_graph_filter_np(G, N, P)
-    gp = G_unpacked[:, p, :]
+    gp = G_unpacked[:, p, :]    
     return gp.flatten()  # (N*N,)
 
 def objective_function_psi_debias(psi_p_flat, Psi, mus_pt, R0, P0, gamma_, p, include_comm_term, N, P, lambda_, xPt, yt, cumulative_loss, mask_W, **kwargs):
@@ -588,7 +619,7 @@ def objective_function_psi_debias(psi_p_flat, Psi, mus_pt, R0, P0, gamma_, p, in
     psi_p = psi_p_flat.reshape(N, N)
     Psi_unpacked[:, p, :] = psi_p
     Psi = pack_graph_filters_np([Psi_unpacked[:, i, :] for i in range(P)], N, P)
-    psi_loss = 0.5 * (lambda_ * cumulative_loss + np.linalg.norm(yt - np.matmul(Psi, xPt))**2)
+    psi_loss = 0.5 * (lambda_ * cumulative_loss + np.linalg.norm(yt - Psi @ xPt)**2)
     Psi_unpacked = get_each_graph_filter_np(Psi, N, P)
  
     for i in range(P):
@@ -634,7 +665,7 @@ def update_function_wstep2_lms(W_flat, G, step, Psi, mus_pt, gamma_, N, P, **kwa
 def objective_function_h_lms(h_flat, Ys, yt, lambda_, C, u, instant_h, nu_t, epsilon):
     h = h_flat.reshape(-1, 1)
     loss = 0
-    loss += 0.5 * np.linalg.norm(yt - np.matmul(Ys, h))**2
+    loss += 0.5 * np.linalg.norm(yt - Ys @ h)**2
     loss += nu_t * np.linalg.norm(h, ord=1)
     return loss
  
@@ -643,12 +674,12 @@ def gradient_function_h_lms(h_flat, Ys, yt, lambda_, C, u, instant_h, nu_t, epsi
     b = np.sign(h) / (epsilon + h)
  
     if instant_h:
-        h_e = yt - np.matmul(Ys, h)
-        h_g = np.matmul(Ys.T, h_e)
+        h_e = yt - Ys @ h
+        h_g = Ys.T @ h_e
     else:
-        C = lambda_ * C + np.matmul(Ys.T, Ys)
-        u = lambda_ * u + np.matmul(Ys.T, yt)
-        h_g = np.matmul(C, h) - u
+        C = lambda_ * C + Ys.T @ Ys
+        u = lambda_ * u + Ys.T @ yt
+        h_g = C @ h - u
     return (h_g + nu_t * b).flatten()
  
 def update_function_h_lms(h_flat, dh, h_stepsize, Ys, yt, lambda_, C, u, instant_h, nu_t, epsilon):

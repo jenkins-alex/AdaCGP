@@ -16,7 +16,7 @@ hydra:
 
     params:
       +data_seed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
-      graph: choice(random)
+      graph: choice(er, kr, sbm)
       data.N: choice(50)
       model.hyperparams.patience: choice(1000)
 
@@ -38,4 +38,4 @@ defaults:
   - graph: kr
   - override hydra/sweeper: optuna
   - override /hydra/sweeper/sampler: grid
-  - override hydra/launcher: joblib
+  - override hydra/launcher: ray

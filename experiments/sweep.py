@@ -1,4 +1,5 @@
 import torch
+torch.set_num_threads(1)
 import hydra
 import pickle
 import os
@@ -6,7 +7,8 @@ import os
 from omegaconf import OmegaConf, DictConfig
 from src.data_generation import generate_data
 from src.utils import set_seed
-from src.models.adaptive.AdaCGP import AdaCGP
+from src.models.adaptive.AdaCGP_numpy import AdaCGP as AdaCGP_numpy
+from src.models.adaptive.AdaCGP import AdaCGP as AdaCGP_torch
 from src.models.adaptive.TISO import TISO
 from src.models.adaptive.TIRSO import TIRSO
 from src.models.adaptive.SDSEM import SDSEM
@@ -17,9 +19,8 @@ from src.models.batch.VAR import VAR
 from src.models.batch.PMIME import PMIME
 from src.eval_metrics import save_results
 
-def get_model(name):
+def get_model(name, complexity_analysis=False):
     models = {
-        'AdaCGP': AdaCGP,
         'TISO': TISO,
         'TIRSO': TIRSO,
         'SDSEM': SDSEM,
@@ -29,6 +30,11 @@ def get_model(name):
         'VAR': VAR,
         'PMIME': PMIME
     }
+    adacgp_variants = ['AdaCGP', 'AdaCGP_P1', 'AdaCGP_P2']
+    adacgp_impl = AdaCGP_numpy if complexity_analysis else AdaCGP_torch
+    for variant in adacgp_variants:
+        models[variant] = adacgp_impl
+
     if name not in models:
         raise ValueError(f"Model {name} not implemented")
     return models[name]
@@ -53,15 +59,16 @@ def main(cfg: DictConfig):
         X, y, graph_filters_flat, weight_matrix, filter_coefficients = [d.to(device) for d in generate_data(cfg)]
 
         # Initialise model
-        model = get_model(cfg.model.name)(cfg.data.N, cfg.model.hyperparams, device)
+        model = get_model(cfg.model.name, \
+                          cfg.get('complexity_analysis', False))(cfg.data.N, cfg.model.hyperparams, device)
         
         # Run optimization
         model_inputs = {
-            'X': X,
-            'y': y,
+            'X': X if cfg.get('max_t_steps', None) is None else X[:cfg.max_t_steps],
+            'y': y if cfg.get('max_t_steps', None) is None else y[:cfg.max_t_steps],
             'weight_matrix': weight_matrix,
             'filter_coefficients': filter_coefficients,
-            'graph_filters_flat': graph_filters_flat
+            'graph_filter_matrix': graph_filters_flat
         }
         results = model.run(**model_inputs)
         results['weight_matrix'] = weight_matrix
@@ -70,13 +77,17 @@ def main(cfg: DictConfig):
         dir, subdir = get_save_path()
         save_path = os.path.join(dir, subdir)
         eval_window = cfg.model.hyperparams.patience if cfg.model.name != 'GrangerVAR' else cfg.model.hyperparams.gc_window
-        error_metric = save_results(cfg.model.name, eval_window, results, save_path, cfg.get('dump_results', False))
+        error_metric = save_results(cfg.model.name, eval_window, results, save_path, \
+                                    cfg.get('dump_results', False), cfg.get('complexity_analysis', False), \
+                                        cfg.model.hyperparams.get('train_steps_list', None))
 
         if results[error_metric][-1] != results[error_metric][-1]:
             return 1e6
         return results[error_metric][-1]
     except Exception as e:
+        import traceback
         print(e)
+        traceback.print_exc()
         return 1e6
 
 if __name__ == "__main__":

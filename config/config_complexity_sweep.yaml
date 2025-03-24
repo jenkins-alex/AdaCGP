@@ -1,0 +1,42 @@
+hydra:
+  mode: MULTIRUN
+  sweep:
+    dir: logs/complexity/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${model.name}/${data.name}/graph_${graph.graph_type}/N_${data.N}/frac_non_zero_${graph.frac_non_zero}/seed_${seed}
+
+  sweeper:
+    sampler:
+      _target_: optuna.samplers.GridSampler
+    _target_: hydra_plugins.hydra_optuna_sweeper.optuna_sweeper.OptunaSweeper
+    storage: null
+    direction: minimize
+    study_name: complexity
+    n_jobs: 10
+    n_trials: 1000
+  
+    params:
+      seed: choice(1, 2, 3)
+      data.N: choice(10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500)
+      model: choice(adacgp_numpy_p1, adacgp_numpy_p2, sdsem, tiso, tirso, var)
+
+device: cpu
+data_seed: 42
+seed: 42
+model:
+  hyperparams:
+    record_complexity: true
+    patience: 10000
+    use_eig_stepsize: false
+    train_steps_list: [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000]
+complexity_analysis: true
+graph:
+  frac_non_zero: 'default'
+
+defaults:
+  - _self_
+  - data: cgp
+  - model: adacgp_numpy_p1
+  - graph: random
+  - override hydra/sweeper: optuna
+  - override /hydra/sweeper/sampler: grid
+  - override hydra/launcher: ray

@@ -29,6 +29,8 @@ class SDSEM:
             self._use_eig_stepsize = True
         if not hasattr(self, '_record_complexity'):
             self._record_complexity = False
+        if not hasattr(self, '_train_steps_list'):
+            self._train_steps_list = None
 
     def softThresh(self, M, mu):
         P = np.asmatrix(np.zeros(M.shape))
@@ -57,6 +59,7 @@ class SDSEM:
             stepsize = 1.0 / L
         else:
             stepsize = self._stepsize
+            L = 1.0 / stepsize  # placeholder
 
         result_dict = {}
 
@@ -114,7 +117,6 @@ class SDSEM:
 
     def run(self, y, weight_matrix=None, **kwargs):
         # This function computes an estimate via TISO
-
         results = {
             'pred_error': [], 'w_error': [], 'matrices': [],
             'percentage_correct_elements': [], 'num_non_zero_elements': [],
@@ -139,14 +141,14 @@ class SDSEM:
 
         lowest_error = 1e10
         
-        with tqdm(range(T)) as pbar:
-            for t in pbar:
-
+        iter_range = range(T) if self._train_steps_list is None else self._train_steps_list
+        with tqdm(iter_range) as pbar:
+            for i, t in enumerate(pbar):
                 # start measuring iteration memory and time complexity
                 if self._record_complexity:
                     gc.collect()
                     tracemalloc.start()
-                    start_time = time.time()
+                    start_time = time.process_time()
 
                 ma_error = results['pred_error_recursive_moving_average'][-1]
 
@@ -179,7 +181,7 @@ class SDSEM:
                 lamb_t = self._lamb
 
                 # recursive data updates
-                if t == 0:
+                if i == 0:
                     Ptau = Pt
                     Qtau = Yt
                 else:
@@ -199,7 +201,7 @@ class SDSEM:
 
                 # end measuring iteration memory and time complexity
                 if self._record_complexity:
-                    end_time = time.time()
+                    end_time = time.process_time()
                     _, peak_size = tracemalloc.get_traced_memory()
                     tracemalloc.stop()
                     execution_time = end_time - start_time

@@ -1,0 +1,7 @@
+name: 'AdaCGP_P2'
+hyperparams:
+  use_path_1: false
+
+defaults:
+  - adacgp_numpy
+  - _self_

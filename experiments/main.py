@@ -8,7 +8,8 @@ import numpy as np
 from omegaconf import OmegaConf, DictConfig
 from src.data_generation import generate_data
 from src.utils import set_seed
-from src.models.adaptive.AdaCGP import AdaCGP
+from src.models.adaptive.AdaCGP import AdaCGP as AdaCGP_torch
+from src.models.adaptive.AdaCGP_numpy import AdaCGP as AdaCGP_numpy
 from src.models.adaptive.TISO import TISO
 from src.models.adaptive.TIRSO import TIRSO
 from src.models.adaptive.SDSEM import SDSEM
@@ -19,9 +20,8 @@ from src.models.batch.VAR import VAR
 from src.models.batch.PMIME import PMIME
 from src.eval_metrics import save_results
 
-def get_model(name):
+def get_model(name, complexity_analysis=False):
     models = {
-        'AdaCGP': AdaCGP,
         'TISO': TISO,
         'TIRSO': TIRSO,
         'SDSEM': SDSEM,
@@ -31,6 +31,11 @@ def get_model(name):
         'VAR': VAR,
         'PMIME': PMIME
     }
+    adacgp_variants = ['AdaCGP', 'AdaCGP_P1', 'AdaCGP_P2']
+    adacgp_impl = AdaCGP_numpy if complexity_analysis else AdaCGP_torch
+    for variant in adacgp_variants:
+        models[variant] = adacgp_impl
+
     if name not in models:
         raise ValueError(f"Model {name} not implemented")
     return models[name]
@@ -62,7 +67,7 @@ def main(cfg: DictConfig):
             'y': y,
             'weight_matrix': weight_matrix,
             'filter_coefficients': filter_coefficients,
-            'graph_filters_flat': graph_filters_flat
+            'graph_filter_matrix': graph_filters_flat
         }
         results = model.run(**model_inputs)
 

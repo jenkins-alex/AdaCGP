@@ -1,7 +1,7 @@
 \begin{table*}[t]
 \centering
 \caption{Comparison of graph topology estimation algorithms for $N = 50$. Lower values are better for all metrics. \\Best results are in \textbf{bold}, second best are \underline{underlined}.}
-\label{tab:graph_estimation}
+\label{tab:results_table}
 \setlength{\tabcolsep}{6pt}  % Increased horizontal spacing
 \setlength{\aboverulesep}{0pt}
 \setlength{\belowrulesep}{0pt}
@@ -12,14 +12,15 @@
 \cmidrule(lr){2-5} \cmidrule(lr){6-9}
 Algorithm & NMSE & NMSE$(\mathbf{W})$ & P$_{M}$ & P$_{FA}$ & NMSE & NMSE$(\mathbf{W})$ & P$_{M}$ & P$_{FA}$ \\
 \midrule
-GLasso & 264.25{\scriptsize$\pm$0.54} & 1.71{\scriptsize$\pm$0.01} & 0.53{\scriptsize$\pm$0.02} & 0.45{\scriptsize$\pm$0.02} & 260.58{\scriptsize$\pm$0.42} & 1.97{\scriptsize$\pm$0.02} & 0.77{\scriptsize$\pm$0.05} & 0.19{\scriptsize$\pm$0.01} \\
+GLasso & --- & 1.71{\scriptsize$\pm$0.01} & 0.53{\scriptsize$\pm$0.02} & 0.45{\scriptsize$\pm$0.02} & --- & 1.97{\scriptsize$\pm$0.02} & 0.77{\scriptsize$\pm$0.05} & 0.19{\scriptsize$\pm$0.01} \\
+GL-SigRep & --- & 1.03{\scriptsize$\pm$0.00} & 0.01{\scriptsize$\pm$0.00} & 0.98{\scriptsize$\pm$0.00} & --- & 1.04{\scriptsize$\pm$0.00} & 0.01{\scriptsize$\pm$0.00} & 0.98{\scriptsize$\pm$0.00} \\
 VAR & 0.57{\scriptsize$\pm$0.03} & 1.99{\scriptsize$\pm$0.07} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} & 0.55{\scriptsize$\pm$0.01} & 1.88{\scriptsize$\pm$0.08} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} \\
-SD-SEM & 2.40{\scriptsize$\pm$0.08} & 1.40{\scriptsize$\pm$0.01} & 0.55{\scriptsize$\pm$0.00} & 0.44{\scriptsize$\pm$0.00} & 2.44{\scriptsize$\pm$0.06} & 1.40{\scriptsize$\pm$0.01} & 0.54{\scriptsize$\pm$0.01} & 0.42{\scriptsize$\pm$0.01} \\
+SD-SEM & --- & 1.40{\scriptsize$\pm$0.01} & 0.55{\scriptsize$\pm$0.00} & 0.44{\scriptsize$\pm$0.00} & --- & 1.40{\scriptsize$\pm$0.01} & 0.54{\scriptsize$\pm$0.01} & 0.42{\scriptsize$\pm$0.01} \\
 TIRSO & 0.68{\scriptsize$\pm$0.01} & 1.07{\scriptsize$\pm$0.01} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} & 0.69{\scriptsize$\pm$0.03} & 1.07{\scriptsize$\pm$0.02} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} \\
 TISO & 0.68{\scriptsize$\pm$0.02} & 1.07{\scriptsize$\pm$0.01} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} & 0.67{\scriptsize$\pm$0.03} & 1.07{\scriptsize$\pm$0.02} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} \\
 P2 + ADB & \textbf{0.54{\scriptsize$\pm$0.01}} & 0.08{\scriptsize$\pm$0.03} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} & 0.59{\scriptsize$\pm$0.01} & 0.22{\scriptsize$\pm$0.02} & 0.03{\scriptsize$\pm$0.01} & 0.05{\scriptsize$\pm$0.01} \\
 P2 + DB & \underline{0.54{\scriptsize$\pm$0.01}} & \textbf{0.04{\scriptsize$\pm$0.00}} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} & 0.58{\scriptsize$\pm$0.01} & 0.20{\scriptsize$\pm$0.03} & 0.02{\scriptsize$\pm$0.03} & 0.01{\scriptsize$\pm$0.01} \\
-P1 + ADB & 0.56{\scriptsize$\pm$0.01} & 0.07{\scriptsize$\pm$0.00} & \underline{0.01{\scriptsize$\pm$0.01}} & \underline{0.00{\scriptsize$\pm$0.00}} & \underline{0.53{\scriptsize$\pm$0.01}} & \underline{0.03{\scriptsize$\pm$0.01}} & \underline{0.00{\scriptsize$\pm$0.00}} & \underline{0.00{\scriptsize$\pm$0.00}} \\
+P1 + ADB & 0.56{\scriptsize$\pm$0.01} & 0.07{\scriptsize$\pm$0.00} & 0.01{\scriptsize$\pm$0.01} & 0.00{\scriptsize$\pm$0.00} & \underline{0.53{\scriptsize$\pm$0.01}} & \underline{0.03{\scriptsize$\pm$0.01}} & \underline{0.00{\scriptsize$\pm$0.00}} & \underline{0.00{\scriptsize$\pm$0.00}} \\
 P1 + DB & 0.55{\scriptsize$\pm$0.01} & \underline{0.06{\scriptsize$\pm$0.00}} & \textbf{0.00{\scriptsize$\pm$0.00}} & \textbf{0.00{\scriptsize$\pm$0.00}} & \textbf{0.52{\scriptsize$\pm$0.00}} & \textbf{0.02{\scriptsize$\pm$0.00}} & \textbf{0.00{\scriptsize$\pm$0.00}} & \textbf{0.00{\scriptsize$\pm$0.00}} \\
 \midrule
 \addlinespace[1em]  % Added vertical space
@@ -27,14 +28,15 @@ P1 + DB & 0.55{\scriptsize$\pm$0.01} & \underline{0.06{\scriptsize$\pm$0.00}} & 
 \cmidrule(lr){2-5} \cmidrule(lr){6-9}
 Algorithm & NMSE & NMSE$(\mathbf{W})$ & P$_{M}$ & P$_{FA}$ & NMSE & NMSE$(\mathbf{W})$ & P$_{M}$ & P$_{FA}$ \\
 \midrule
-GLasso & 257.77{\scriptsize$\pm$0.61} & 3.62{\scriptsize$\pm$0.04} & 0.49{\scriptsize$\pm$0.02} & 0.19{\scriptsize$\pm$0.01} & 238.77{\scriptsize$\pm$0.34} & 14.03{\scriptsize$\pm$0.15} & 0.92{\scriptsize$\pm$0.01} & 0.03{\scriptsize$\pm$0.00} \\
+GLasso & --- & 3.62{\scriptsize$\pm$0.04} & 0.49{\scriptsize$\pm$0.02} & 0.19{\scriptsize$\pm$0.01} & --- & 14.03{\scriptsize$\pm$0.15} & 0.92{\scriptsize$\pm$0.01} & 0.03{\scriptsize$\pm$0.00} \\
+GL-SigRep & --- & 0.91{\scriptsize$\pm$0.00} & 0.14{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} & --- & 1.37{\scriptsize$\pm$0.00} & 0.00{\scriptsize$\pm$0.00} & 0.98{\scriptsize$\pm$0.00} \\
 VAR & \textbf{0.65{\scriptsize$\pm$0.01}} & 1.14{\scriptsize$\pm$0.09} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} & 0.90{\scriptsize$\pm$0.03} & 4.41{\scriptsize$\pm$0.56} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} \\
-SD-SEM & 3.96{\scriptsize$\pm$0.10} & 1.41{\scriptsize$\pm$0.01} & 0.61{\scriptsize$\pm$0.01} & 0.43{\scriptsize$\pm$0.01} & 5.54{\scriptsize$\pm$0.08} & 3.08{\scriptsize$\pm$0.11} & 0.64{\scriptsize$\pm$0.01} & 0.31{\scriptsize$\pm$0.01} \\
+SD-SEM & --- & 1.41{\scriptsize$\pm$0.01} & 0.61{\scriptsize$\pm$0.01} & 0.43{\scriptsize$\pm$0.01} & --- & 3.08{\scriptsize$\pm$0.11} & 0.64{\scriptsize$\pm$0.01} & 0.31{\scriptsize$\pm$0.01} \\
 TIRSO & 0.74{\scriptsize$\pm$0.04} & 0.79{\scriptsize$\pm$0.02} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} & 0.89{\scriptsize$\pm$0.01} & 1.46{\scriptsize$\pm$0.08} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} \\
 TISO & 0.74{\scriptsize$\pm$0.04} & 0.79{\scriptsize$\pm$0.03} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} & 0.87{\scriptsize$\pm$0.02} & 1.48{\scriptsize$\pm$0.10} & 0.00{\scriptsize$\pm$0.00} & 1.00{\scriptsize$\pm$0.00} \\
 P2 + ADB & 0.76{\scriptsize$\pm$0.01} & 0.51{\scriptsize$\pm$0.02} & 0.02{\scriptsize$\pm$0.01} & 0.61{\scriptsize$\pm$0.03} & \textbf{0.78{\scriptsize$\pm$0.01}} & 0.25{\scriptsize$\pm$0.05} & 0.03{\scriptsize$\pm$0.01} & 0.91{\scriptsize$\pm$0.02} \\
 P2 + DB & 0.70{\scriptsize$\pm$0.01} & 0.33{\scriptsize$\pm$0.02} & 0.01{\scriptsize$\pm$0.00} & 0.53{\scriptsize$\pm$0.10} & \underline{0.80{\scriptsize$\pm$0.02}} & 0.20{\scriptsize$\pm$0.02} & 0.00{\scriptsize$\pm$0.04} & 0.96{\scriptsize$\pm$0.09} \\
-P1 + ADB & 0.67{\scriptsize$\pm$0.01} & \underline{0.21{\scriptsize$\pm$0.04}} & \underline{0.01{\scriptsize$\pm$0.01}} & \underline{0.00{\scriptsize$\pm$0.00}} & 0.83{\scriptsize$\pm$0.01} & \underline{0.15{\scriptsize$\pm$0.02}} & \underline{0.10{\scriptsize$\pm$0.05}} & \underline{0.25{\scriptsize$\pm$0.04}} \\
+P1 + ADB & 0.67{\scriptsize$\pm$0.01} & \underline{0.21{\scriptsize$\pm$0.04}} & \underline{0.01{\scriptsize$\pm$0.01}} & \underline{0.00{\scriptsize$\pm$0.00}} & 0.83{\scriptsize$\pm$0.01} & \underline{0.15{\scriptsize$\pm$0.02}} & 0.10{\scriptsize$\pm$0.05} & 0.25{\scriptsize$\pm$0.04} \\
 P1 + DB & \underline{0.66{\scriptsize$\pm$0.01}} & \textbf{0.14{\scriptsize$\pm$0.02}} & \textbf{0.00{\scriptsize$\pm$0.00}} & \textbf{0.01{\scriptsize$\pm$0.02}} & 0.84{\scriptsize$\pm$0.01} & \textbf{0.11{\scriptsize$\pm$0.13}} & \textbf{0.12{\scriptsize$\pm$0.05}} & \textbf{0.12{\scriptsize$\pm$0.24}} \\
 \midrule[0.3pt]\toprule[1pt]
 \end{tabular}

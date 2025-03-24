@@ -118,24 +118,17 @@ and
 python generate_simulation_results_figures.py
 ```
 
-
 ### 2. Computational complexity
 
-Evaluate the computational complexity of AdaCGP compared to baselines:
-
+Evaluate the computational complexity over N and T for all models:
 ```bash
-python experiments/run_benchmarks.py --nodes 10 20 50 100 --time_steps 1000
+python -m experiments.sweep --config-path ../config --config-name config_complexity_sweep
 ```
 
 To recreate our computation complexity figures:
 ```bash
 python generate_complexity_results_figures.py
 ```
-
-This will generate plots comparing:
-- Execution time vs. number of nodes
-- Memory usage vs. number of nodes
-- Convergence rate analysis
 
 ### 3. AdaCGP sparsity experiments
 

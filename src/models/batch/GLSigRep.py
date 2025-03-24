@@ -26,6 +26,8 @@ class GLSigRep:
             self._train_steps_list = None
         if not hasattr(self, '_record_complexity'):
             self._record_complexity = False
+        if not hasattr(self, '_train_steps_list'):
+            self._train_steps_list = None
 
     def predict_topology(self, data, t):
         N = data.shape[1]
@@ -63,7 +65,7 @@ class GLSigRep:
                 if self._record_complexity:
                     gc.collect()
                     tracemalloc.start()
-                    start_time = time.time()
+                    start_time = time.process_time()
 
                 ##################################
                 ######### COMPUTE W ##############
@@ -77,7 +79,10 @@ class GLSigRep:
 
                 if len(results['pred_error_recursive_moving_average']) == 0:
                     results['pred_error_recursive_moving_average'].append(e)
-                    continue
+                    if self._train_steps_list is None:
+                        continue
+                    else:
+                        pass
 
                 ##################################
                 ######### CHECK CONVERGENCE ######
@@ -100,7 +105,7 @@ class GLSigRep:
 
                 # end measuring iteration memory and time complexity
                 if self._record_complexity:
-                    end_time = time.time()
+                    end_time = time.process_time()
                     _, peak_size = tracemalloc.get_traced_memory()
                     tracemalloc.stop()
                     execution_time = end_time - start_time

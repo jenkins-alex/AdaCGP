@@ -90,7 +90,7 @@ class PMIME:
                 if self._record_complexity:
                     gc.collect()
                     tracemalloc.start()
-                    start_time = time.time()
+                    start_time = time.process_time()
 
                 ##################################
                 ######### COMPUTE W ##############
@@ -126,7 +126,7 @@ class PMIME:
 
                 # end measuring iteration memory and time complexity
                 if self._record_complexity:
-                    end_time = time.time()
+                    end_time = time.process_time()
                     _, peak_size = tracemalloc.get_traced_memory()
                     tracemalloc.stop()
                     execution_time = end_time - start_time

@@ -5,7 +5,7 @@ import torch
 import numpy as np
 
 from tqdm import tqdm
-from src.utils import get_each_graph_filter
+from src.utils import get_each_graph_filter_np
 
 class TISO:
     def __init__(self, N, hyperparams, device):
@@ -24,6 +24,8 @@ class TISO:
             self._use_eig_stepsize = True
         if not hasattr(self, '_record_complexity'):
             self._record_complexity = False
+        if not hasattr(self, '_train_steps_list'):
+            self._train_steps_list = None
 
     def run(self, y, weight_matrix=None, **kwargs):
         # This function computes an estimate via TISO
@@ -50,14 +52,15 @@ class TISO:
         
         t_A = np.zeros((N, N * self._P, T))
 
-        with tqdm(range(self._P, T)) as pbar:
-            for t in pbar:
+        iter_range = range(self.P, T) if self._train_steps_list is None else self._train_steps_list
+        with tqdm(iter_range) as pbar:
+            for i, t in enumerate(pbar):
 
                 # start measuring iteration memory and time complexity
                 if self._record_complexity:
                     gc.collect()
                     tracemalloc.start()
-                    start_time = time.time()
+                    start_time = time.process_time()
 
                 ma_error = results['pred_error_recursive_moving_average'][-1]
 
@@ -91,6 +94,7 @@ class TISO:
                 else:
                     try:
                         if self._use_eig_stepsize:
+                            print('using eig stepsize')
                             R = np.outer(g, g)
                             eigs = torch.lobpcg(torch.tensor(R), largest=True)
                             stepsize = 2 / (eigs[0].item())
@@ -118,13 +122,13 @@ class TISO:
                 ##################################
 
                 # compute the causal graph from the VAR parameters as described in paper
-                psi = get_each_graph_filter(torch.tensor(a_prev), self.N, self._P).numpy()
+                psi = get_each_graph_filter_np(a_prev, self.N, self._P)
                 causal = ((psi == 0).sum(axis=1)) != self._P
                 W = np.linalg.norm(psi, ord=2, axis=1) * causal  # use magnitude of psi as weights
-                
+
                 # end measuring iteration memory and time complexity
                 if self._record_complexity:
-                    end_time = time.time()
+                    end_time = time.process_time()
                     _, peak_size = tracemalloc.get_traced_memory()
                     tracemalloc.stop()
                     execution_time = end_time - start_time

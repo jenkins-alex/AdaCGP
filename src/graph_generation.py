@@ -113,14 +113,23 @@ def generate_pl_graph(n=1000, initial_nodes=15, p=0.8, **kwargs):
     matrix /= 1.5 * max_eig
     return matrix
 
-def generate_random_graph(N, **kwargs):
+def generate_random_graph(N, frac_non_zero='default', **kwargs):
+    """
+    Generate a random graph with N nodes and a specified non-zero fraction,
+    where if not 'default' the frac_non_zero is the fraction of non-zero elements in the weight matrix.
+    """
     # as in Methods of Adaptive Signal Processing on Graphs Using Vertex-Time Autoregressive Models
     W = np.random.normal(0, 1, size=(N, N))
 
-    # threshold weight matrix to between 0.3 and 0.7 of max weight
-    max_weight = np.max(np.abs(W))
-    W[np.abs(W)>0.7*max_weight] = 0
-    W[np.abs(W)<0.3*max_weight] = 0
+    # threshold weight matrix to desired sprasity
+    if frac_non_zero == 'default':
+        max_weight = np.max(np.abs(W))
+        W[np.abs(W)>0.7*max_weight] = 0
+        W[np.abs(W)<0.3*max_weight] = 0
+    else:
+        assert 0 < frac_non_zero <= 1, "frac_non_zero must be between 0 and 1"
+        threshold = np.quantile(np.abs(W), 1-frac_non_zero)
+        W[np.abs(W) < threshold] = 0
     
     # calculate the eigenvalues of W and normalise by 1.5x largest eigenvalue for stable process
     w, _ = np.linalg.eig(W)

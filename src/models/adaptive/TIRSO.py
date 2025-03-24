@@ -28,6 +28,8 @@ class TIRSO:
             self._default_stepsize = 0.001
         if not hasattr(self, '_record_complexity'):
             self._record_complexity = False
+        if not hasattr(self, '_train_steps_list'):
+            self._train_steps_list = None
 
     def run(self, y, weight_matrix=None, **kwargs):
         # This function computes an estimate via TISO
@@ -50,21 +52,22 @@ class TIRSO:
         weight_matrix = np.array(weight_matrix) if weight_matrix is not None else None
         m_y = y[:, :, 0].T
         N, T = m_y.shape
-        
+
         assert a_prev.shape[0] == N and a_prev.shape[1] == N * self._P, 'A_initial should have of size N X NP'
-        
+
         Phi_prev = self._sigma**2 * np.eye(N * self._P)  # initializing Phi
         r_prev = np.zeros((N * self._P, N))  # r has NP X N size to avoid transpose 
         m_r = np.zeros((N * self._P, N))
         t_A = np.zeros((N, N * self._P, T))
 
-        with tqdm(range(self._P, T)) as pbar:
-            for t in pbar:
+        iter_range = range(T) if self._train_steps_list is None else self._train_steps_list
+        with tqdm(iter_range) as pbar:
+            for i, t in enumerate(pbar):
                 # start measuring iteration memory and time complexity
                 if self._record_complexity:
                     gc.collect()
                     tracemalloc.start()
-                    start_time = time.time()
+                    start_time = time.process_time()
 
                 ma_error = results['pred_error_recursive_moving_average'][-1]
 
@@ -92,10 +95,10 @@ class TIRSO:
                 y_prev = m_y[:, t - self._P:t]
                 aux = np.fliplr(y_prev).T
                 g = aux.flatten()
+                R = np.outer(g, g)
 
                 # compute stepsize
                 if self._use_eig_stepsize:
-                    R = np.outer(g, g)
                     eigs = torch.lobpcg(torch.tensor(R), largest=True)
                     stepsize = 2 / (eigs[0].item())
                     stepsize /= (np.linalg.norm(g, ord=2)**2 + self._epsilon)
@@ -141,7 +144,7 @@ class TIRSO:
                 
                 # end measuring iteration memory and time complexity
                 if self._record_complexity:
-                    end_time = time.time()
+                    end_time = time.process_time()
                     _, peak_size = tracemalloc.get_traced_memory()
                     tracemalloc.stop()
                     execution_time = end_time - start_time

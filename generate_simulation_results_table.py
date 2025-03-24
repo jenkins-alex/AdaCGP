@@ -12,6 +12,7 @@ sweep_dir_adacgp = 'logs/AdaCGP/cgp_simulated/best_sweep_mc/2024-09-30/14-45-57'
 sweep_dir_tiso = 'logs/TISO/cgp_simulated/best_sweep_mc/2025-03-20/13-42-55/nmse_pred_alg1'
 sweep_dir_tirso = 'logs/TIRSO/cgp_simulated/best_sweep_mc/2025-03-20/13-42-48/nmse_pred_alg1'
 sweep_dir_glasso = 'logs/GLasso/cgp_simulated/best_sweep_mc/2025-03-20/12-33-22/nmse_pred_alg1'
+sweep_dir_glsigrep = 'logs/GLSigRep/cgp_simulated/best_sweep_mc/2025-03-21/09-48-31/nmse_pred_alg1'  # Added GL-SigRep
 sweep_dir_var = 'logs/VAR/cgp_simulated/best_sweep_mc/2025-03-20/15-55-33/nmse_pred_alg1'
 sweep_dir_sdsem = 'logs/SDSEM/cgp_simulated/best_sweep_mc/2025-03-20/16-47-04/nmse_pred_alg1'
 
@@ -131,6 +132,7 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
         'TISO': 'TISO',
         'TIRSO': 'TIRSO',
         'GLasso': 'GLasso',
+        'GL-SigRep': 'GL-SigRep',  # Added GL-SigRep
         'VAR': 'VAR',
         'SD-SEM': 'SD-SEM'
     }
@@ -146,8 +148,8 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
     # New order for graph types
     graph_types = ['RANDOM', 'ER', 'KR', 'SBM']
     
-    # Ordered list of algorithms to display (GLasso at the top, followed by VAR, then SD-SEM)
-    algorithms = ['GLasso', 'VAR', 'SD-SEM', 'TIRSO', 'TISO', 'AdaCGP-P2-ADB', 'AdaCGP-P2-DB', 'AdaCGP-P1-ADB', 'AdaCGP-P1-DB']
+    # Ordered list of algorithms to display (GLasso at the top, followed by GL-SigRep, then VAR, then SD-SEM)
+    algorithms = ['GLasso', 'GL-SigRep', 'VAR', 'SD-SEM', 'TIRSO', 'TISO', 'AdaCGP-P2-ADB', 'AdaCGP-P2-DB', 'AdaCGP-P1-ADB', 'AdaCGP-P1-DB']
     
     # Helper function to extract numeric values from formatted strings
     def extract_value(value_str):
@@ -203,18 +205,24 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
                 return "{:.2f}".format(float(value_str))
             except:
                 return value_str
-    
-    # Function to find best and second best indices for a metric
+
+    # Replace the existing find_best_indices function with this modified version
     def find_best_indices(data_list, metric):
-        if all(x == "---" for x in data_list):
+        # Filter out "---" entries before comparison
+        valid_data = [(i, x) for i, x in enumerate(data_list) if x != "---" and not pd.isna(x)]
+        
+        if not valid_data:
             return [], []
         
         # Extract values for comparison
-        values = [extract_value(x) for x in data_list]
+        indices = [i for i, _ in valid_data]
+        values = [extract_value(x) for _, x in valid_data]
+        
         # For all metrics, lower is better
-        sorted_indices = sorted(range(len(values)), key=lambda i: values[i])
+        sorted_pairs = sorted(zip(indices, values), key=lambda pair: pair[1])
+        
         # Filter out infinity values (missing data)
-        valid_indices = [i for i in sorted_indices if values[i] != float('inf')]
+        valid_indices = [i for i, v in sorted_pairs if v != float('inf')]
         
         if len(valid_indices) >= 2:
             return [valid_indices[0]], [valid_indices[1]]
@@ -222,74 +230,90 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
             return [valid_indices[0]], []
         else:
             return [], []
-    
-    # Function to find best and second best for P_M + P_FA sum, with NMSE_W tiebreaker
+
+    # Also update the find_best_combined_indices function to skip the methods with dashes
     def find_best_combined_indices(p_miss_list, p_fa_list, nmse_w_list):
-        if all(x == "---" for x in p_miss_list) or all(x == "---" for x in p_fa_list):
+        # Create a list of indices where neither p_miss nor p_fa is "---" or NaN
+        valid_indices = [i for i, (pm, pfa) in enumerate(zip(p_miss_list, p_fa_list)) 
+                    if pm != "---" and pfa != "---" and not pd.isna(pm) and not pd.isna(pfa)]
+        
+        if not valid_indices:
             return [], []
         
         # Extract values for P_M, P_FA and NMSE_W
-        p_miss_values = [extract_value(x) for x in p_miss_list]
-        p_fa_values = [extract_value(x) for x in p_fa_list]
-        nmse_w_values = [extract_value(x) for x in nmse_w_list]
+        p_miss_values = [extract_value(p_miss_list[i]) for i in valid_indices]
+        p_fa_values = [extract_value(p_fa_list[i]) for i in valid_indices]
+        nmse_w_values = [extract_value(nmse_w_list[i]) if nmse_w_list[i] != "---" and not pd.isna(nmse_w_list[i]) 
+                    else float('inf') for i in valid_indices]
         
         # Calculate combined metric (P_M + P_FA)
         combined_values = []
-        for i in range(len(p_miss_values)):
+        for i in range(len(valid_indices)):
             if p_miss_values[i] == float('inf') or p_fa_values[i] == float('inf'):
                 combined_values.append(float('inf'))
             else:
                 combined_values.append(p_miss_values[i] + p_fa_values[i])
         
+        # Rest of the function remains the same, but using our filtered valid_indices...
+        
         # Find algorithms with lowest combined value
         min_value = min(combined_values) if not all(v == float('inf') for v in combined_values) else float('inf')
-        min_indices = [i for i, v in enumerate(combined_values) if v == min_value and v != float('inf')]
+        min_indices_relative = [i for i, v in enumerate(combined_values) if v == min_value and v != float('inf')]
+        min_indices = [valid_indices[i] for i in min_indices_relative]  # Convert back to original indices
         
         # If there's a tie, use NMSE_W as tiebreaker
         if len(min_indices) > 1:
             # Get NMSE_W values for tied algorithms
-            tie_nmse_values = [nmse_w_values[i] for i in min_indices]
-            # Find algorithm with lowest NMSE_W among tied algorithms
-            min_nmse_idx = min_indices[tie_nmse_values.index(min(tie_nmse_values))]
-            best_indices = [min_nmse_idx]
-            # Remove the best from consideration for second best
-            min_indices.remove(min_nmse_idx)
-            # For second best, if there are still tied values, use NMSE_W again
-            if min_indices:
-                tie_nmse_values = [nmse_w_values[i] for i in min_indices]
-                second_best_idx = min_indices[tie_nmse_values.index(min(tie_nmse_values))]
-                second_best_indices = [second_best_idx]
-            else:
-                # Find second lowest combined value if no more ties for first place
-                remaining_values = combined_values.copy()
-                for i in best_indices:
-                    remaining_values[i] = float('inf')
+            tie_nmse_indices = [i for i, idx in enumerate(min_indices_relative) if nmse_w_values[idx] != float('inf')]
+            
+            if tie_nmse_indices:
+                tie_nmse_values = [nmse_w_values[min_indices_relative[i]] for i in tie_nmse_indices]
+                best_relative_idx = tie_nmse_indices[tie_nmse_values.index(min(tie_nmse_values))]
+                best_indices = [valid_indices[min_indices_relative[best_relative_idx]]]
                 
-                second_min = min(remaining_values) if not all(v == float('inf') for v in remaining_values) else float('inf')
-                second_min_indices = [i for i, v in enumerate(remaining_values) if v == second_min and v != float('inf')]
+                # Remove the best from consideration for second best
+                remaining_indices = [idx for idx in min_indices_relative if idx != min_indices_relative[best_relative_idx]]
                 
-                if len(second_min_indices) > 1:
-                    # Tiebreaker for second place
-                    second_tie_nmse = [nmse_w_values[i] for i in second_min_indices]
-                    second_best_indices = [second_min_indices[second_tie_nmse.index(min(second_tie_nmse))]]
+                if remaining_indices:
+                    remaining_nmse_indices = [i for i, idx in enumerate(remaining_indices) if nmse_w_values[idx] != float('inf')]
+                    if remaining_nmse_indices:
+                        remaining_nmse_values = [nmse_w_values[remaining_indices[i]] for i in remaining_nmse_indices]
+                        second_best_relative_idx = remaining_nmse_indices[remaining_nmse_values.index(min(remaining_nmse_values))]
+                        second_best_indices = [valid_indices[remaining_indices[second_best_relative_idx]]]
+                    else:
+                        second_best_indices = []
                 else:
-                    second_best_indices = second_min_indices
+                    second_best_indices = []
+            else:
+                # If we can't use NMSE_W to break the tie, just pick the first one
+                best_indices = [valid_indices[min_indices_relative[0]]]
+                second_best_indices = [valid_indices[min_indices_relative[1]]] if len(min_indices_relative) > 1 else []
         else:
-            # No tie for first place, find second lowest combined value
             if min_indices:
                 best_indices = [min_indices[0]]
-                remaining_values = combined_values.copy()
-                remaining_values[best_indices[0]] = float('inf')
                 
-                second_min = min(remaining_values) if not all(v == float('inf') for v in remaining_values) else float('inf')
-                second_min_indices = [i for i, v in enumerate(remaining_values) if v == second_min and v != float('inf')]
+                # Find second best
+                remaining_combined_values = combined_values.copy()
+                for i, idx in enumerate(min_indices_relative):
+                    remaining_combined_values[i] = float('inf')
                 
-                if len(second_min_indices) > 1:
-                    # Tiebreaker for second place
-                    second_tie_nmse = [nmse_w_values[i] for i in second_min_indices]
-                    second_best_indices = [second_min_indices[second_tie_nmse.index(min(second_tie_nmse))]]
+                second_min = min(remaining_combined_values) if not all(v == float('inf') for v in remaining_combined_values) else float('inf')
+                second_min_indices_relative = [i for i, v in enumerate(remaining_combined_values) if v == second_min and v != float('inf')]
+                
+                if second_min_indices_relative:
+                    if len(second_min_indices_relative) > 1:
+                        # Tiebreaker for second place
+                        second_tie_nmse_indices = [i for i in second_min_indices_relative if nmse_w_values[i] != float('inf')]
+                        if second_tie_nmse_indices:
+                            second_tie_nmse_values = [nmse_w_values[i] for i in second_tie_nmse_indices]
+                            second_best_relative_idx = second_tie_nmse_indices[second_tie_nmse_values.index(min(second_tie_nmse_values))]
+                            second_best_indices = [valid_indices[second_best_relative_idx]]
+                        else:
+                            second_best_indices = [valid_indices[second_min_indices_relative[0]]]
+                    else:
+                        second_best_indices = [valid_indices[second_min_indices_relative[0]]]
                 else:
-                    second_best_indices = second_min_indices
+                    second_best_indices = []
             else:
                 best_indices = []
                 second_best_indices = []
@@ -576,10 +600,11 @@ def main():
     adacgp_not_alternate_mean = df_not_alternate.groupby(['graph', 'N', 'use_path_1']).median(numeric_only=True)
     adacgp_not_alternate_std = df_not_alternate.groupby(['graph', 'N', 'use_path_1']).quantile(0.75, numeric_only=True) - df_not_alternate.groupby(['graph', 'N', 'use_path_1']).quantile(0.25, numeric_only=True)
 
-    # Process TISO, TIRSO, GLasso, VAR, and SD-SEM data
+    # Process TISO, TIRSO, GLasso, GL-SigRep, VAR, and SD-SEM data
     df_tirso = split_by_algorithm(walk_sweep_dirs(sweep_dir_tirso))
     df_tiso = split_by_algorithm(walk_sweep_dirs(sweep_dir_tiso))
     df_glasso = split_by_algorithm(walk_sweep_dirs(sweep_dir_glasso))
+    df_glsigrep = split_by_algorithm(walk_sweep_dirs(sweep_dir_glsigrep))  # Added GL-SigRep
     df_var = split_by_algorithm(walk_sweep_dirs(sweep_dir_var))
     df_sdsem = split_by_algorithm(walk_sweep_dirs(sweep_dir_sdsem))
 
@@ -589,6 +614,8 @@ def main():
     tirso_std = df_tirso.groupby(by=['graph', 'N']).quantile(0.75, numeric_only=True) - df_tirso.groupby(by=['graph', 'N']).quantile(0.25, numeric_only=True)
     glasso_mean = df_glasso.groupby(by=['graph', 'N']).median(numeric_only=True)
     glasso_std = df_glasso.groupby(by=['graph', 'N']).quantile(0.75, numeric_only=True) - df_glasso.groupby(by=['graph', 'N']).quantile(0.25, numeric_only=True)
+    glsigrep_mean = df_glsigrep.groupby(by=['graph', 'N']).median(numeric_only=True)  # GL-SigRep mean
+    glsigrep_std = df_glsigrep.groupby(by=['graph', 'N']).quantile(0.75, numeric_only=True) - df_glsigrep.groupby(by=['graph', 'N']).quantile(0.25, numeric_only=True)  # GL-SigRep std
     var_mean = df_var.groupby(by=['graph', 'N']).median(numeric_only=True)
     var_std = df_var.groupby(by=['graph', 'N']).quantile(0.75, numeric_only=True) - df_var.groupby(by=['graph', 'N']).quantile(0.25, numeric_only=True)
     sdsem_mean = df_sdsem.groupby(by=['graph', 'N']).median(numeric_only=True)
@@ -613,6 +640,7 @@ def main():
     tiso_N50 = tiso_mean.loc[(slice(None), N), :]
     tirso_N50 = tirso_mean.loc[(slice(None), N), :]
     glasso_N50 = glasso_mean.loc[(slice(None), N), :]
+    glsigrep_N50 = glsigrep_mean.loc[(slice(None), N), :]  # Filter GL-SigRep for N=50
     var_N50 = var_mean.loc[(slice(None), N), :]
     sdsem_N50 = sdsem_mean.loc[(slice(None), N), :]
 
@@ -622,17 +650,34 @@ def main():
     tiso_N50 = tiso_N50.join(tiso_std.loc[(slice(None), N), :], rsuffix='_std')
     tirso_N50 = tirso_N50.join(tirso_std.loc[(slice(None), N), :], rsuffix='_std')
     glasso_N50 = glasso_N50.join(glasso_std.loc[(slice(None), N), :], rsuffix='_std')
+    glsigrep_N50 = glsigrep_N50.join(glsigrep_std.loc[(slice(None), N), :], rsuffix='_std')  # Join GL-SigRep with std data
     var_N50 = var_N50.join(var_std.loc[(slice(None), N), :], rsuffix='_std')
     sdsem_N50 = sdsem_N50.join(sdsem_std.loc[(slice(None), N), :], rsuffix='_std')
 
+    # Replace NMSE values with dashes for GLasso, GL-SigRep, and SD-SEM
+    if 'nmse_pred' in glasso_N50.columns:
+        glasso_N50['nmse_pred'] = '---'
+        
+    if 'nmse_pred' in glsigrep_N50.columns:
+        glsigrep_N50['nmse_pred'] = '---'
+        
+    if 'nmse_pred' in sdsem_N50.columns:
+        sdsem_N50['nmse_pred'] = '---'
+
     # Apply the formatting function to all datasets
-    for df in [adacgp_N50_path1, adacgp_N50_path2, tiso_N50, tirso_N50, glasso_N50, var_N50, sdsem_N50]:
+    for df in [adacgp_N50_path1, adacgp_N50_path2, tiso_N50, tirso_N50, glasso_N50, glsigrep_N50, var_N50, sdsem_N50]:
         for col in df.columns:
             if col.endswith('_std'):
                 continue
+            
+            # Skip formatting for columns that are already set to '---'
+            if df[col].astype(str).eq('---').any():
+                continue
+                
             std_col = col + '_std'
-            df[col] = df.apply(lambda row: format_mean_std(row[col], row[std_col]), axis=1)
-            df.drop(columns=[std_col], inplace=True)
+            if std_col in df.columns:  # Make sure the std column exists
+                df[col] = df.apply(lambda row: format_mean_std(row[col], row[std_col]), axis=1)
+                df.drop(columns=[std_col], inplace=True)
 
     # Clean up indices
     adacgp_N50_path1.index = adacgp_N50_path1.index.droplevel('use_path_1')
@@ -642,6 +687,7 @@ def main():
     tiso_N50.index = tiso_N50.index.droplevel('N')
     tirso_N50.index = tirso_N50.index.droplevel('N')
     glasso_N50.index = glasso_N50.index.droplevel('N')
+    glsigrep_N50.index = glsigrep_N50.index.droplevel('N')  # Clean up GL-SigRep index
     var_N50.index = var_N50.index.droplevel('N')
     sdsem_N50.index = sdsem_N50.index.droplevel('N')
 
@@ -655,15 +701,16 @@ def main():
     adacgp_N50_path1.reset_index(level=-1, inplace=True)
     adacgp_N50_path2.reset_index(level=-1, inplace=True)
 
-    # Add algorithm column to TISO/TIRSO/GLasso/VAR/SD-SEM
+    # Add algorithm column to TISO/TIRSO/GLasso/GL-SigRep/VAR/SD-SEM
     tiso_N50['algorithm'] = 'TISO'
     tirso_N50['algorithm'] = 'TIRSO'
     glasso_N50['algorithm'] = 'GLasso'
+    glsigrep_N50['algorithm'] = 'GL-SigRep'  # Add algorithm column for GL-SigRep
     var_N50['algorithm'] = 'VAR'
     sdsem_N50['algorithm'] = 'SD-SEM'
 
     # Concat all dataframes for final result
-    df_main_res = pd.concat([adacgp_N50_path1, adacgp_N50_path2, tiso_N50, tirso_N50, glasso_N50, var_N50, sdsem_N50], axis=0)
+    df_main_res = pd.concat([adacgp_N50_path1, adacgp_N50_path2, tiso_N50, tirso_N50, glasso_N50, glsigrep_N50, var_N50, sdsem_N50], axis=0)  # Added GL-SigRep to concat
 
     # Drop unnecessary columns
     if 'pce' in df_main_res.columns:
@@ -678,5 +725,5 @@ def main():
     df_main_res.to_latex(simple_output, escape=False)
     print(f"Standard LaTeX table generated at {simple_output}")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

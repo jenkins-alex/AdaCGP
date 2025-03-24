@@ -6,3 +6,4 @@ hyperparams:
   patience: 500
   min_delta_percent: 0.01
   ma_alpha: 0.1
+  stepsize: 1e-5

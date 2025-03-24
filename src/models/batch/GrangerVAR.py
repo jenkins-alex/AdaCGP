@@ -106,7 +106,7 @@ class GrangerVAR:
                 if self._record_complexity:
                     gc.collect()
                     tracemalloc.start()
-                    start_time = time.time()
+                    start_time = time.process_time()
 
                 ma_error = results['pred_error_recursive_moving_average'][-1]
 
@@ -134,7 +134,7 @@ class GrangerVAR:
                 try:
                     W, y_pred, var_out = self.predict_next_step(m_y, t)
                     
-                    if self._use_gc_during_training:
+                    if not self._use_gc_during_training:
                         # Only keep recent models when approaching convergence
                         # This ensures we don't waste memory on early models
                         if patience_left < self._patience / 2:
@@ -150,7 +150,7 @@ class GrangerVAR:
 
                 # end measuring iteration memory and time complexity
                 if self._record_complexity:
-                    end_time = time.time()
+                    end_time = time.process_time()
                     _, peak_size = tracemalloc.get_traced_memory()
                     tracemalloc.stop()
                     execution_time = end_time - start_time

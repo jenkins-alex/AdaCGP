@@ -2,14 +2,17 @@ import os
 import pickle
 import numpy as np
 
-def save_results(model_name, patience, results, save_path, dump_results=False):
+def save_results(model_name, patience, results, save_path, dump_results=False, complexity_analysis=False, complexity_t_steps=None):
     if dump_results:
         fpath = os.path.join(save_path, 'results.pkl')
         with open(fpath, 'wb') as f:
             pickle.dump(results, f)
         print(f"Results saved to {fpath}")
 
-    if model_name == 'AdaCGP':
+    if complexity_analysis:
+        assert complexity_t_steps is not None, "complexity_t_steps should be provided for complexity analysis"
+
+    if model_name in ['AdaCGP', 'AdaCGP_P1', 'AdaCGP_P2']:
         # compute the average errors in steady state and save to eval_results.txt
         alg2_in_steady_state = np.array(results['second_alg_converged_status'])
         alg1_status = np.array(results['first_alg_converged_status'])
@@ -31,6 +34,9 @@ def save_results(model_name, patience, results, save_path, dump_results=False):
             'p_miss': np.array(results['p_miss']),
             'p_false_alarm': np.array(results['p_false_alarm'])
         }
+        if complexity_analysis:
+            metrics['iteration_time'] = np.array(results['iteration_time'])
+            metrics['iteration_memory'] = np.array(results['iteration_memory'])
 
         algorithms = {
             'alg1': alg1_in_steady_state,
@@ -40,8 +46,14 @@ def save_results(model_name, patience, results, save_path, dump_results=False):
         with open(os.path.join(save_path, 'eval_results.txt'), 'w') as f:
             for alg_name, alg_state in algorithms.items():
                 for metric_name, metric_values in metrics.items():
-                    mean_value = np.mean(metric_values[alg_state])
-                    f.write(f"{metric_name}_{alg_name}: {mean_value:.9f}\n")
+                    if complexity_analysis:
+                        if metric_name in ['iteration_time', 'iteration_memory']:
+                            for i, t in enumerate(complexity_t_steps):
+                                mean_value = metric_values[i]
+                                f.write(f"{metric_name}_{alg_name}_T={t}: {mean_value:.9f}\n")
+                    else:
+                        mean_value = np.mean(metric_values[alg_state])
+                        f.write(f"{metric_name}_{alg_name}: {mean_value:.9f}\n")
         return 'pred_error'
 
     elif model_name in ['TISO', 'TIRSO', 'SDSEM', 'GLasso', 'GLSigRep', 'GrangerVAR', 'VAR', 'PMIME']:
@@ -57,6 +69,9 @@ def save_results(model_name, patience, results, save_path, dump_results=False):
             'p_miss': np.array(results['p_miss']),
             'p_false_alarm': np.array(results['p_false_alarm'])
         }
+        if complexity_analysis:
+            metrics['iteration_time'] = np.array(results['iteration_time'])
+            metrics['iteration_memory'] = np.array(results['iteration_memory'])
 
         algorithms = {
             'alg1': alg1_in_steady_state
@@ -65,8 +80,14 @@ def save_results(model_name, patience, results, save_path, dump_results=False):
         with open(os.path.join(save_path, 'eval_results.txt'), 'w') as f:
             for alg_name, alg_state in algorithms.items():
                 for metric_name, metric_values in metrics.items():
-                    mean_value = np.mean(metric_values[alg_state])
-                    f.write(f"{metric_name}_{alg_name}: {mean_value:.9f}\n")
+                    if complexity_analysis:
+                        if metric_name in ['iteration_time', 'iteration_memory']:
+                            for i, t in enumerate(complexity_t_steps):
+                                mean_value = metric_values[i]
+                                f.write(f"{metric_name}_{alg_name}_T={t}: {mean_value:.9f}\n")
+                    else:
+                        mean_value = np.mean(metric_values[alg_state])
+                        f.write(f"{metric_name}_{alg_name}: {mean_value:.9f}\n")
         return 'pred_error'
 
     else:
