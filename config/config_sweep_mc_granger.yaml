@@ -15,7 +15,7 @@ hydra:
     n_trials: 1000
 
     params:
-      +data_seed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+      +data_seed: 1, 2, 3, 4, 5
       graph: choice(er, kr, sbm)
       data.N: choice(50)
       model.hyperparams.patience: choice(1000)
@@ -25,6 +25,8 @@ dump_results: true
 model:
   hyperparams:
     patience: 1000
+    use_gc_during_training: false
+    gc_window: 50
 data:
   name: 'cgp_simulated'
 

@@ -21,7 +21,7 @@ class GrangerVAR:
         if not hasattr(self, "_gc_window"):
             self._gc_window = 20  # Granger causality evaluation window size
         if not hasattr(self, '_use_gc_during_training'):
-            self._use_gc_during_training = False
+            self._use_gc_during_training = True
         if not hasattr(self, '_train_steps_list'):
             self._train_steps_list = None
         if not hasattr(self, '_record_complexity'):
@@ -71,7 +71,7 @@ class GrangerVAR:
         last_observations = train_data[-self._P:, :]
         y_pred = results.forecast(last_observations, steps=1)[0]
         return W, y_pred, results  # Return the model results for later GC testing
-        
+
     def run(self, y, weight_matrix=None, **kwargs):
         # This function computes an estimate via VAR with postponed GC testing
 

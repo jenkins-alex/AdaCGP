@@ -12,12 +12,14 @@ sweep_dir_adacgp = 'logs/AdaCGP/cgp_simulated/best_sweep_mc/2024-09-30/14-45-57'
 sweep_dir_tiso = 'logs/TISO/cgp_simulated/best_sweep_mc/2025-03-20/13-42-55/nmse_pred_alg1'
 sweep_dir_tirso = 'logs/TIRSO/cgp_simulated/best_sweep_mc/2025-03-20/13-42-48/nmse_pred_alg1'
 sweep_dir_glasso = 'logs/GLasso/cgp_simulated/best_sweep_mc/2025-03-20/12-33-22/nmse_pred_alg1'
-sweep_dir_glsigrep = 'logs/GLSigRep/cgp_simulated/best_sweep_mc/2025-03-21/09-48-31/nmse_pred_alg1'  # Added GL-SigRep
+sweep_dir_glsigrep = 'logs/GLSigRep/cgp_simulated/best_sweep_mc/2025-03-21/09-48-31/nmse_pred_alg1'
 sweep_dir_var = 'logs/VAR/cgp_simulated/best_sweep_mc/2025-03-20/15-55-33/nmse_pred_alg1'
 sweep_dir_sdsem = 'logs/SDSEM/cgp_simulated/best_sweep_mc/2025-03-20/16-47-04/nmse_pred_alg1'
+sweep_dir_vargc = 'logs/GrangerVAR/cgp_simulated/best_sweep_mc/2025-03-24/22-12-54/nmse_pred_alg1'  # granger tmp
 
 # Node number parameter
 N = '50'  # Can be changed as needed
+no_seeds = 5
 best_error = 'nmse_pred_from_h'  # Optimization metric
 
 # Helper functions for data processing
@@ -125,10 +127,10 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
     
     # Algorithm display names (shorter for table)
     alg_display = {
-        'AdaCGP-P1-DB': 'P1 + DB',
-        'AdaCGP-P1-ADB': 'P1 + ADB',
-        'AdaCGP-P2-DB': 'P2 + DB',
-        'AdaCGP-P2-ADB': 'P2 + ADB',
+        'AdaCGP-P1-DB': 'P1 w/ debias',
+        'AdaCGP-P1-ADB': 'P1 w/ alt. debias',
+        'AdaCGP-P2-DB': 'P2 w/ debias',
+        'AdaCGP-P2-ADB': 'P2 w/ alt. debias',
         'TISO': 'TISO',
         'TIRSO': 'TIRSO',
         'GLasso': 'GLasso',
@@ -149,7 +151,7 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
     graph_types = ['RANDOM', 'ER', 'KR', 'SBM']
     
     # Ordered list of algorithms to display (GLasso at the top, followed by GL-SigRep, then VAR, then SD-SEM)
-    algorithms = ['GLasso', 'GL-SigRep', 'VAR', 'SD-SEM', 'TIRSO', 'TISO', 'AdaCGP-P2-ADB', 'AdaCGP-P2-DB', 'AdaCGP-P1-ADB', 'AdaCGP-P1-DB']
+    algorithms = ['GLasso', 'GL-SigRep', 'VAR', 'VAR + Granger', 'SD-SEM', 'TIRSO', 'TISO', 'AdaCGP-P2-ADB', 'AdaCGP-P2-DB', 'AdaCGP-P1-ADB', 'AdaCGP-P1-DB']
     
     # Helper function to extract numeric values from formatted strings
     def extract_value(value_str):
@@ -172,7 +174,7 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
     # Function to format with bold or underline
     def format_with_emphasis(value_str, emphasis):
         if value_str == "---" or pd.isna(value_str):
-            return "---"
+            return "$-$"
         
         if emphasis == "bold":
             return "\\textbf{" + value_str + "}"
@@ -208,118 +210,189 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
 
     # Replace the existing find_best_indices function with this modified version
     def find_best_indices(data_list, metric):
-        # Filter out "---" entries before comparison
-        valid_data = [(i, x) for i, x in enumerate(data_list) if x != "---" and not pd.isna(x)]
+        """
+        Find indices of best and second best entries in data_list.
+        When entries have the same mean value, use lower uncertainty (std) as the tiebreaker.
+        
+        Parameters:
+        - data_list: List of values potentially with uncertainty (e.g., "0.66±0.02")
+        - metric: Metric name (for reference)
+        
+        Returns:
+        - Tuple of (best_indices, second_best_indices)
+        """
+        # Helper function to extract mean and std from formatted string
+        def extract_mean_std(value_str):
+            if value_str == "---" or pd.isna(value_str):
+                return float('inf'), float('inf')
+            
+            # If it's a formatted string with mean±std
+            if "{\\scriptsize$\\pm$" in value_str:
+                parts = value_str.split("{\\scriptsize$\\pm$")
+                mean_str = parts[0]
+                std_str = parts[1].replace("}", "")
+                try:
+                    return float(mean_str), float(std_str)
+                except:
+                    return float('inf'), float('inf')
+            else:
+                try:
+                    return float(value_str), 0.0
+                except:
+                    return float('inf'), float('inf')
+        
+        # Build list of (index, mean, std) tuples
+        valid_data = []
+        for i, value in enumerate(data_list):
+            mean, std = extract_mean_std(value)
+            if mean != float('inf'):  # Skip invalid entries
+                valid_data.append((i, mean, std))
         
         if not valid_data:
             return [], []
         
-        # Extract values for comparison
-        indices = [i for i, _ in valid_data]
-        values = [extract_value(x) for _, x in valid_data]
+        # First sort by mean (lower is better for all metrics)
+        valid_data.sort(key=lambda x: x[1])
         
-        # For all metrics, lower is better
-        sorted_pairs = sorted(zip(indices, values), key=lambda pair: pair[1])
+        # Find entries with the best (lowest) mean value
+        best_mean = valid_data[0][1]
+        best_candidates = [x for x in valid_data if x[1] == best_mean]
         
-        # Filter out infinity values (missing data)
-        valid_indices = [i for i, v in sorted_pairs if v != float('inf')]
-        
-        if len(valid_indices) >= 2:
-            return [valid_indices[0]], [valid_indices[1]]
-        elif len(valid_indices) == 1:
-            return [valid_indices[0]], []
+        # If multiple entries have the same mean, use std as tiebreaker
+        if len(best_candidates) > 1:
+            best_candidates.sort(key=lambda x: x[2])  # Sort by std (lower is better)
+            best_index = [best_candidates[0][0]]  # Take the one with lowest std
         else:
-            return [], []
+            best_index = [best_candidates[0][0]]
+        
+        # Remove the best from consideration for second best
+        remaining_data = [x for x in valid_data if x[0] not in best_index]
+        
+        if not remaining_data:
+            return best_index, []
+        
+        # Find second best using the same approach
+        remaining_data.sort(key=lambda x: x[1])
+        second_best_mean = remaining_data[0][1]
+        second_best_candidates = [x for x in remaining_data if x[1] == second_best_mean]
+        
+        if len(second_best_candidates) > 1:
+            second_best_candidates.sort(key=lambda x: x[2])  # Sort by std
+            second_best_index = [second_best_candidates[0][0]]
+        else:
+            second_best_index = [second_best_candidates[0][0]]
+        
+        return best_index, second_best_index
 
     # Also update the find_best_combined_indices function to skip the methods with dashes
     def find_best_combined_indices(p_miss_list, p_fa_list, nmse_w_list):
-        # Create a list of indices where neither p_miss nor p_fa is "---" or NaN
-        valid_indices = [i for i, (pm, pfa) in enumerate(zip(p_miss_list, p_fa_list)) 
-                    if pm != "---" and pfa != "---" and not pd.isna(pm) and not pd.isna(pfa)]
+        """
+        Find the best and second best algorithms based on combined P_Miss + P_FA metrics,
+        with NMSE_W as a tiebreaker. Handles missing values properly.
         
-        if not valid_indices:
+        Parameters:
+        - p_miss_list: List of P_Miss values (may include "---" or NaN)
+        - p_fa_list: List of P_FA values (may include "---" or NaN)
+        - nmse_w_list: List of NMSE_W values for tiebreaking (may include "---" or NaN)
+        
+        Returns:
+        - Tuple of (best_indices, second_best_indices)
+        """
+        # Helper function to extract mean and std from formatted string
+        def extract_mean_std(value_str):
+            if value_str == "---" or pd.isna(value_str):
+                return float('inf'), float('inf')
+            
+            # If it's a formatted string with mean±std
+            if "{\\scriptsize$\\pm$" in value_str:
+                parts = value_str.split("{\\scriptsize$\\pm$")
+                mean_str = parts[0]
+                std_str = parts[1].replace("}", "")
+                try:
+                    return float(mean_str), float(std_str)
+                except:
+                    return float('inf'), float('inf')
+            else:
+                try:
+                    return float(value_str), 0.0
+                except:
+                    return float('inf'), float('inf')
+        
+        # Build a list of (index, p_miss, p_fa, nmse_w, p_miss_std, p_fa_std, nmse_w_std)
+        combined_data = []
+        for i in range(len(p_miss_list)):
+            p_miss_mean, p_miss_std = extract_mean_std(p_miss_list[i])
+            p_fa_mean, p_fa_std = extract_mean_std(p_fa_list[i])
+            nmse_w_mean, nmse_w_std = extract_mean_std(nmse_w_list[i])
+            
+            # Only include entries where both p_miss and p_fa are valid
+            if p_miss_mean != float('inf') and p_fa_mean != float('inf'):
+                combined_data.append((
+                    i,                 # Original index
+                    p_miss_mean,       # P_Miss mean
+                    p_fa_mean,         # P_FA mean
+                    nmse_w_mean,       # NMSE_W mean (for tiebreaker)
+                    p_miss_std,        # P_Miss std (for tiebreaker)
+                    p_fa_std,          # P_FA std (for tiebreaker)
+                    nmse_w_std         # NMSE_W std (for tiebreaker)
+                ))
+        
+        if not combined_data:
             return [], []
         
-        # Extract values for P_M, P_FA and NMSE_W
-        p_miss_values = [extract_value(p_miss_list[i]) for i in valid_indices]
-        p_fa_values = [extract_value(p_fa_list[i]) for i in valid_indices]
-        nmse_w_values = [extract_value(nmse_w_list[i]) if nmse_w_list[i] != "---" and not pd.isna(nmse_w_list[i]) 
-                    else float('inf') for i in valid_indices]
+        # Sort first by combined P_Miss + P_FA
+        combined_data.sort(key=lambda x: x[1] + x[2])
         
-        # Calculate combined metric (P_M + P_FA)
-        combined_values = []
-        for i in range(len(valid_indices)):
-            if p_miss_values[i] == float('inf') or p_fa_values[i] == float('inf'):
-                combined_values.append(float('inf'))
-            else:
-                combined_values.append(p_miss_values[i] + p_fa_values[i])
+        # Group algorithms with the same combined value
+        best_combined_value = combined_data[0][1] + combined_data[0][2]
+        best_candidates = [x for x in combined_data if (x[1] + x[2]) == best_combined_value]
         
-        # Rest of the function remains the same, but using our filtered valid_indices...
-        
-        # Find algorithms with lowest combined value
-        min_value = min(combined_values) if not all(v == float('inf') for v in combined_values) else float('inf')
-        min_indices_relative = [i for i, v in enumerate(combined_values) if v == min_value and v != float('inf')]
-        min_indices = [valid_indices[i] for i in min_indices_relative]  # Convert back to original indices
-        
-        # If there's a tie, use NMSE_W as tiebreaker
-        if len(min_indices) > 1:
-            # Get NMSE_W values for tied algorithms
-            tie_nmse_indices = [i for i, idx in enumerate(min_indices_relative) if nmse_w_values[idx] != float('inf')]
+        # If multiple algorithms have the same combined value, use NMSE_W as tiebreaker
+        if len(best_candidates) > 1:
+            # First sort by NMSE_W mean
+            best_candidates.sort(key=lambda x: x[3])
+            best_nmse_mean = best_candidates[0][3]
             
-            if tie_nmse_indices:
-                tie_nmse_values = [nmse_w_values[min_indices_relative[i]] for i in tie_nmse_indices]
-                best_relative_idx = tie_nmse_indices[tie_nmse_values.index(min(tie_nmse_values))]
-                best_indices = [valid_indices[min_indices_relative[best_relative_idx]]]
-                
-                # Remove the best from consideration for second best
-                remaining_indices = [idx for idx in min_indices_relative if idx != min_indices_relative[best_relative_idx]]
-                
-                if remaining_indices:
-                    remaining_nmse_indices = [i for i, idx in enumerate(remaining_indices) if nmse_w_values[idx] != float('inf')]
-                    if remaining_nmse_indices:
-                        remaining_nmse_values = [nmse_w_values[remaining_indices[i]] for i in remaining_nmse_indices]
-                        second_best_relative_idx = remaining_nmse_indices[remaining_nmse_values.index(min(remaining_nmse_values))]
-                        second_best_indices = [valid_indices[remaining_indices[second_best_relative_idx]]]
-                    else:
-                        second_best_indices = []
-                else:
-                    second_best_indices = []
+            # If there are still ties on NMSE_W mean, use uncertainty as tiebreaker
+            nmse_tied_candidates = [x for x in best_candidates if x[3] == best_nmse_mean]
+            if len(nmse_tied_candidates) > 1:
+                # Sort by NMSE_W std (lower uncertainty is better)
+                nmse_tied_candidates.sort(key=lambda x: x[6])
+                best_index = [nmse_tied_candidates[0][0]]
             else:
-                # If we can't use NMSE_W to break the tie, just pick the first one
-                best_indices = [valid_indices[min_indices_relative[0]]]
-                second_best_indices = [valid_indices[min_indices_relative[1]]] if len(min_indices_relative) > 1 else []
+                best_index = [best_candidates[0][0]]
         else:
-            if min_indices:
-                best_indices = [min_indices[0]]
-                
-                # Find second best
-                remaining_combined_values = combined_values.copy()
-                for i, idx in enumerate(min_indices_relative):
-                    remaining_combined_values[i] = float('inf')
-                
-                second_min = min(remaining_combined_values) if not all(v == float('inf') for v in remaining_combined_values) else float('inf')
-                second_min_indices_relative = [i for i, v in enumerate(remaining_combined_values) if v == second_min and v != float('inf')]
-                
-                if second_min_indices_relative:
-                    if len(second_min_indices_relative) > 1:
-                        # Tiebreaker for second place
-                        second_tie_nmse_indices = [i for i in second_min_indices_relative if nmse_w_values[i] != float('inf')]
-                        if second_tie_nmse_indices:
-                            second_tie_nmse_values = [nmse_w_values[i] for i in second_tie_nmse_indices]
-                            second_best_relative_idx = second_tie_nmse_indices[second_tie_nmse_values.index(min(second_tie_nmse_values))]
-                            second_best_indices = [valid_indices[second_best_relative_idx]]
-                        else:
-                            second_best_indices = [valid_indices[second_min_indices_relative[0]]]
-                    else:
-                        second_best_indices = [valid_indices[second_min_indices_relative[0]]]
-                else:
-                    second_best_indices = []
-            else:
-                best_indices = []
-                second_best_indices = []
+            best_index = [best_candidates[0][0]]
         
-        return best_indices, second_best_indices
-    
+        # Remove the best from consideration for second best
+        remaining_data = [x for x in combined_data if x[0] not in best_index]
+        
+        if not remaining_data:
+            return best_index, []
+        
+        # Find second best using the same approach
+        remaining_data.sort(key=lambda x: x[1] + x[2])
+        second_best_combined_value = remaining_data[0][1] + remaining_data[0][2]
+        second_best_candidates = [x for x in remaining_data if (x[1] + x[2]) == second_best_combined_value]
+        
+        if len(second_best_candidates) > 1:
+            # Use NMSE_W as tiebreaker
+            second_best_candidates.sort(key=lambda x: x[3])
+            second_best_nmse_mean = second_best_candidates[0][3]
+            
+            # If there are still ties on NMSE_W mean, use uncertainty as tiebreaker
+            second_nmse_tied_candidates = [x for x in second_best_candidates if x[3] == second_best_nmse_mean]
+            if len(second_nmse_tied_candidates) > 1:
+                # Sort by NMSE_W std (lower uncertainty is better)
+                second_nmse_tied_candidates.sort(key=lambda x: x[6])
+                second_best_index = [second_nmse_tied_candidates[0][0]]
+            else:
+                second_best_index = [second_best_candidates[0][0]]
+        else:
+            second_best_index = [second_best_candidates[0][0]]
+        
+        return best_index, second_best_index
+
     # Generate LaTeX table
     with open(output_file, 'w') as f:
         # Write table header with improved formatting
@@ -334,18 +407,19 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
         f.write(header)
         
         # Define column structure with spacer columns for better separation
+        # Add a new column at the beginning for the algorithm type
         column_count = len(metrics)
-        column_def = "@{}l|" + "".join(["c!{\\hspace{.5em}}" for _ in range(column_count-1)]) + "c" + "!{\\hspace{.5em}}|" + "".join(["c!{\\hspace{.5em}}" for _ in range(column_count-1)]) + "c" + "@{}}"
+        column_def = "@{}c|l|" + "".join(["c!{\\hspace{.25em}}" for _ in range(column_count-1)]) + "c" + "!{\\hspace{.25em}}|" + "".join(["c!{\\hspace{.25em}}" for _ in range(column_count-1)]) + "c" + "@{}}"
         f.write("\\begin{tabular}{" + column_def + "\n")
         f.write("\\toprule[1pt]\\midrule[0.3pt]\n")
         
         # Create header row for the first two graph types (RANDOM and ER)
-        f.write("& \\multicolumn{" + str(column_count) + "}{c}{\\textsc{" + graph_display['RANDOM'] + "}} ")
+        f.write("&& \\multicolumn{" + str(column_count) + "}{c}{\\textsc{" + graph_display['RANDOM'] + "}} ")
         f.write("& \\multicolumn{" + str(column_count) + "}{c}{\\textsc{" + graph_display['ER'] + "}} \\\\\n")
-        f.write("\\cmidrule(lr){2-" + str(column_count+1) + "} \\cmidrule(lr){" + str(column_count+2) + "-" + str(2*column_count+1) + "}\n")
+        f.write("\\cmidrule(lr){3-" + str(column_count+2) + "} \\cmidrule(lr){" + str(column_count+3) + "-" + str(2*column_count+2) + "}\n")
         
         # Add metric names to column headers
-        f.write("Algorithm")
+        f.write("& Algorithm")
         for _ in range(2):  # For both Random and ER
             for metric in metrics:
                 f.write(" & " + metric_names[metric])
@@ -388,9 +462,20 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
                 )
             }
         
-        # Now write rows with data from both graphs
+        # Define batch algorithms and adaptive algorithms
+        batch_algorithms = ['GLasso', 'GL-SigRep', 'VAR', 'VAR + Granger']
+        adaptive_algorithms = ['SD-SEM', 'TIRSO', 'TISO', 'AdaCGP-P2-ADB', 'AdaCGP-P2-DB', 'AdaCGP-P1-ADB', 'AdaCGP-P1-DB']
+
+        # Write batch algorithms section
+        f.write("\\multirow{" + str(len(batch_algorithms)) + "}{*}{\\rotatebox{90}{\\textsc{Batch}}} ")
+        
+        # Now write rows with data from both graphs for batch algorithms
         for alg_idx, alg in enumerate(algorithms):
-            row_text = alg_display.get(alg, alg)
+            if alg not in batch_algorithms:
+                continue
+                
+            # Write algorithm name
+            row_text = "& " + alg_display.get(alg, alg)
             
             # First add RANDOM graph data
             graph = 'RANDOM'
@@ -457,17 +542,94 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
             row_text += " \\\\\n"
             f.write(row_text)
         
-        # Add vertical space between the two graph sections
+        # Add a small gap between batch and adaptive algorithms
         f.write("\\midrule\n")
-        f.write("\\addlinespace[1em]  % Added vertical space\n")
+        
+        # Write adaptive algorithms section
+        f.write("\\multirow{" + str(len(adaptive_algorithms)) + "}{*}{\\rotatebox{90}{\\textsc{Adaptive}}} ")
+        
+        # Now write rows with data from both graphs for adaptive algorithms
+        for alg_idx, alg in enumerate(algorithms):
+            if alg not in adaptive_algorithms:
+                continue
+                
+            # Write algorithm name
+            row_text = "& " + alg_display.get(alg, alg)
+            
+            # First add RANDOM graph data
+            graph = 'RANDOM'
+            graph_data = df_main_res.loc[graph].reset_index(drop=True)
+            alg_data = graph_data[graph_data['algorithm'] == alg]
+            
+            for i, metric in enumerate(metrics):
+                if not alg_data.empty and metric in alg_data.columns:
+                    value = clean_value(str(alg_data[metric].values[0]))
+                    
+                    # Apply emphasis based on metric
+                    emphasis = None
+                    if metric == 'nmse_pred':
+                        if alg_idx in best_indices[graph]['nmse_pred'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['nmse_pred'][1]:
+                            emphasis = "underline"
+                    elif metric == 'nmse_w':
+                        if alg_idx in best_indices[graph]['nmse_w'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['nmse_w'][1]:
+                            emphasis = "underline"
+                    elif metric in ['p_miss', 'p_false_alarm']:
+                        if alg_idx in best_indices[graph]['combined'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['combined'][1]:
+                            emphasis = "underline"
+                    
+                    row_text += " & " + format_with_emphasis(value, emphasis)
+                else:
+                    row_text += " & ---"
+            
+            # Then add ER graph data
+            graph = 'ER'
+            graph_data = df_main_res.loc[graph].reset_index(drop=True)
+            alg_data = graph_data[graph_data['algorithm'] == alg]
+            
+            for i, metric in enumerate(metrics):
+                if not alg_data.empty and metric in alg_data.columns:
+                    value = clean_value(str(alg_data[metric].values[0]))
+                    
+                    # Apply emphasis based on metric
+                    emphasis = None
+                    if metric == 'nmse_pred':
+                        if alg_idx in best_indices[graph]['nmse_pred'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['nmse_pred'][1]:
+                            emphasis = "underline"
+                    elif metric == 'nmse_w':
+                        if alg_idx in best_indices[graph]['nmse_w'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['nmse_w'][1]:
+                            emphasis = "underline"
+                    elif metric in ['p_miss', 'p_false_alarm']:
+                        if alg_idx in best_indices[graph]['combined'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['combined'][1]:
+                            emphasis = "underline"
+                    
+                    row_text += " & " + format_with_emphasis(value, emphasis)
+                else:
+                    row_text += " & ---"
+            
+            row_text += " \\\\\n"
+            f.write(row_text)
+        
+        f.write("\\midrule[0.3pt]\\midrule[0.3pt]  % Added seperator \n")
         
         # Create header row for the second two graph types (KR and SBM)
-        f.write("& \\multicolumn{" + str(column_count) + "}{c}{\\textsc{" + graph_display['KR'] + "}} ")
+        f.write("&& \\multicolumn{" + str(column_count) + "}{c}{\\textsc{" + graph_display['KR'] + "}} ")
         f.write("& \\multicolumn{" + str(column_count) + "}{c}{\\textsc{" + graph_display['SBM'] + "}} \\\\\n")
-        f.write("\\cmidrule(lr){2-" + str(column_count+1) + "} \\cmidrule(lr){" + str(column_count+2) + "-" + str(2*column_count+1) + "}\n")
+        f.write("\\cmidrule(lr){3-" + str(column_count+2) + "} \\cmidrule(lr){" + str(column_count+3) + "-" + str(2*column_count+2) + "}\n")
         
         # Add metric names to column headers for KR and SBM
-        f.write("Algorithm")
+        f.write("& Algorithm")
         for _ in range(2):  # For both KR and SBM
             for metric in metrics:
                 f.write(" & " + metric_names[metric])
@@ -510,9 +672,16 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
                 )
             }
         
-        # Now write rows with data from both graphs
+        # Write batch algorithms section for KR and SBM
+        f.write("\\multirow{" + str(len(batch_algorithms)) + "}{*}{\\rotatebox{90}{\\textsc{Batch}}} ")
+        
+        # Now write rows with data from both graphs for batch algorithms
         for alg_idx, alg in enumerate(algorithms):
-            row_text = alg_display.get(alg, alg)
+            if alg not in batch_algorithms:
+                continue
+                
+            # Write algorithm name
+            row_text = "& " + alg_display.get(alg, alg)
             
             # First add KR graph data
             graph = 'KR'
@@ -579,11 +748,90 @@ def generate_improved_table(df_main_res, N, output_file='tables/improved_graph_e
             row_text += " \\\\\n"
             f.write(row_text)
         
+        # Add a small gap between batch and adaptive algorithms
+        f.write("\\midrule\n")
+        
+        # Write adaptive algorithms section for KR and SBM
+        f.write("\\multirow{" + str(len(adaptive_algorithms)) + "}{*}{\\rotatebox{90}{\\textsc{Adaptive}}} ")
+        
+        # Now write rows with data from both graphs for adaptive algorithms
+        for alg_idx, alg in enumerate(algorithms):
+            if alg not in adaptive_algorithms:
+                continue
+                
+            # Write algorithm name
+            row_text = "& " + alg_display.get(alg, alg)
+            
+            # First add KR graph data
+            graph = 'KR'
+            graph_data = df_main_res.loc[graph].reset_index(drop=True)
+            alg_data = graph_data[graph_data['algorithm'] == alg]
+            
+            for i, metric in enumerate(metrics):
+                if not alg_data.empty and metric in alg_data.columns:
+                    value = clean_value(str(alg_data[metric].values[0]))
+                    
+                    # Apply emphasis based on metric
+                    emphasis = None
+                    if metric == 'nmse_pred':
+                        if alg_idx in best_indices[graph]['nmse_pred'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['nmse_pred'][1]:
+                            emphasis = "underline"
+                    elif metric == 'nmse_w':
+                        if alg_idx in best_indices[graph]['nmse_w'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['nmse_w'][1]:
+                            emphasis = "underline"
+                    elif metric in ['p_miss', 'p_false_alarm']:
+                        if alg_idx in best_indices[graph]['combined'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['combined'][1]:
+                            emphasis = "underline"
+                    
+                    row_text += " & " + format_with_emphasis(value, emphasis)
+                else:
+                    row_text += " & ---"
+            
+            # Then add SBM graph data
+            graph = 'SBM'
+            graph_data = df_main_res.loc[graph].reset_index(drop=True)
+            alg_data = graph_data[graph_data['algorithm'] == alg]
+            
+            for i, metric in enumerate(metrics):
+                if not alg_data.empty and metric in alg_data.columns:
+                    value = clean_value(str(alg_data[metric].values[0]))
+                    
+                    # Apply emphasis based on metric
+                    emphasis = None
+                    if metric == 'nmse_pred':
+                        if alg_idx in best_indices[graph]['nmse_pred'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['nmse_pred'][1]:
+                            emphasis = "underline"
+                    elif metric == 'nmse_w':
+                        if alg_idx in best_indices[graph]['nmse_w'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['nmse_w'][1]:
+                            emphasis = "underline"
+                    elif metric in ['p_miss', 'p_false_alarm']:
+                        if alg_idx in best_indices[graph]['combined'][0]:
+                            emphasis = "bold"
+                        elif alg_idx in best_indices[graph]['combined'][1]:
+                            emphasis = "underline"
+                    
+                    row_text += " & " + format_with_emphasis(value, emphasis)
+                else:
+                    row_text += " & ---"
+            
+            row_text += " \\\\\n"
+            f.write(row_text)
+
         # Close the tabular environment
         f.write("\\midrule[0.3pt]\\toprule[1pt]\n")
         f.write("\\end{tabular}\n")
         f.write("\\end{table*}")
-    
+
     print(f"Improved LaTeX table generated at {output_file}")
     return output_file
 
@@ -593,6 +841,10 @@ def main():
     df_adacgp = walk_sweep_dirs(sweep_dir_adacgp)
     df_alternate = df_adacgp[df_adacgp['alternate'] == 'True']
     df_not_alternate = df_adacgp[df_adacgp['alternate'] == 'False']
+
+    # filter by <= no_seeds
+    df_alternate = df_alternate[df_alternate['seed'].astype(int) <= no_seeds]
+    df_not_alternate = df_not_alternate[df_not_alternate['seed'].astype(int) <= no_seeds]
     
     # Calculate statistics for AdaCGP
     adacgp_alternate_mean = df_alternate.groupby(['graph', 'N', 'use_path_1']).median(numeric_only=True)
@@ -607,6 +859,16 @@ def main():
     df_glsigrep = split_by_algorithm(walk_sweep_dirs(sweep_dir_glsigrep))  # Added GL-SigRep
     df_var = split_by_algorithm(walk_sweep_dirs(sweep_dir_var))
     df_sdsem = split_by_algorithm(walk_sweep_dirs(sweep_dir_sdsem))
+    df_vargc = split_by_algorithm(walk_sweep_dirs(sweep_dir_vargc))  # granger tmp
+
+    # filter dfs by <= no_seeds
+    df_tirso = df_tirso[df_tirso['seed'].astype(int) <= no_seeds]
+    df_tiso = df_tiso[df_tiso['seed'].astype(int) <= no_seeds]
+    df_glasso = df_glasso[df_glasso['seed'].astype(int) <= no_seeds]
+    df_glsigrep = df_glsigrep[df_glsigrep['seed'].astype(int) <= no_seeds]  # GL-SigRep
+    df_var = df_var[df_var['seed'].astype(int) <= no_seeds]
+    df_sdsem = df_sdsem[df_sdsem['seed'].astype(int) <= no_seeds]
+    df_vargc = df_vargc[df_vargc['seed'].astype(int) <= no_seeds]  # granger tmp
 
     tiso_mean = df_tiso.groupby(by=['graph', 'N']).median(numeric_only=True)
     tiso_std = df_tiso.groupby(by=['graph', 'N']).quantile(0.75, numeric_only=True) - df_tiso.groupby(by=['graph', 'N']).quantile(0.25, numeric_only=True)
@@ -620,6 +882,8 @@ def main():
     var_std = df_var.groupby(by=['graph', 'N']).quantile(0.75, numeric_only=True) - df_var.groupby(by=['graph', 'N']).quantile(0.25, numeric_only=True)
     sdsem_mean = df_sdsem.groupby(by=['graph', 'N']).median(numeric_only=True)
     sdsem_std = df_sdsem.groupby(by=['graph', 'N']).quantile(0.75, numeric_only=True) - df_sdsem.groupby(by=['graph', 'N']).quantile(0.25, numeric_only=True)
+    vargc_mean = df_vargc.groupby(by=['graph', 'N']).median(numeric_only=True)  # granger tmp
+    vargc_std = df_vargc.groupby(by=['graph', 'N']).quantile(0.75, numeric_only=True) - df_vargc.groupby(by=['graph', 'N']).quantile(0.25, numeric_only=True)  # granger tmp
 
     # Process the AdaCGP results
     split_alternate_mean = split_alternate(adacgp_alternate_mean)
@@ -643,6 +907,7 @@ def main():
     glsigrep_N50 = glsigrep_mean.loc[(slice(None), N), :]  # Filter GL-SigRep for N=50
     var_N50 = var_mean.loc[(slice(None), N), :]
     sdsem_N50 = sdsem_mean.loc[(slice(None), N), :]
+    vargc_N50 = vargc_mean.loc[(slice(None), N), :]  # granger tmp
 
     # Join with std data
     adacgp_N50_path1 = adacgp_N50_path1.join(split_std.loc[(slice(None), N, 'True', slice(None)), :], rsuffix='_std')
@@ -653,6 +918,7 @@ def main():
     glsigrep_N50 = glsigrep_N50.join(glsigrep_std.loc[(slice(None), N), :], rsuffix='_std')  # Join GL-SigRep with std data
     var_N50 = var_N50.join(var_std.loc[(slice(None), N), :], rsuffix='_std')
     sdsem_N50 = sdsem_N50.join(sdsem_std.loc[(slice(None), N), :], rsuffix='_std')
+    vargc_N50 = vargc_N50.join(vargc_std.loc[(slice(None), N), :], rsuffix='_std')  # granger tmp
 
     # Replace NMSE values with dashes for GLasso, GL-SigRep, and SD-SEM
     if 'nmse_pred' in glasso_N50.columns:
@@ -665,7 +931,7 @@ def main():
         sdsem_N50['nmse_pred'] = '---'
 
     # Apply the formatting function to all datasets
-    for df in [adacgp_N50_path1, adacgp_N50_path2, tiso_N50, tirso_N50, glasso_N50, glsigrep_N50, var_N50, sdsem_N50]:
+    for df in [adacgp_N50_path1, adacgp_N50_path2, tiso_N50, tirso_N50, glasso_N50, glsigrep_N50, var_N50, vargc_N50, sdsem_N50]:
         for col in df.columns:
             if col.endswith('_std'):
                 continue
@@ -690,6 +956,7 @@ def main():
     glsigrep_N50.index = glsigrep_N50.index.droplevel('N')  # Clean up GL-SigRep index
     var_N50.index = var_N50.index.droplevel('N')
     sdsem_N50.index = sdsem_N50.index.droplevel('N')
+    vargc_N50.index = vargc_N50.index.droplevel('N')  # gr
 
     # Rename algorithms
     name_changes_path_1 = {'alg1': 'AdaCGP-P1', 'alg2': 'AdaCGP-P1-DB', 'alg3': 'AdaCGP-P1-ADB'}
@@ -708,13 +975,15 @@ def main():
     glsigrep_N50['algorithm'] = 'GL-SigRep'  # Add algorithm column for GL-SigRep
     var_N50['algorithm'] = 'VAR'
     sdsem_N50['algorithm'] = 'SD-SEM'
+    vargc_N50['algorithm'] = 'VAR + Granger'  # granger tmp
 
     # Concat all dataframes for final result
-    df_main_res = pd.concat([adacgp_N50_path1, adacgp_N50_path2, tiso_N50, tirso_N50, glasso_N50, glsigrep_N50, var_N50, sdsem_N50], axis=0)  # Added GL-SigRep to concat
+    df_main_res = pd.concat([adacgp_N50_path1, adacgp_N50_path2, tiso_N50, tirso_N50, glasso_N50, glsigrep_N50, var_N50, vargc_N50, sdsem_N50], axis=0)
 
     # Drop unnecessary columns
     if 'pce' in df_main_res.columns:
         df_main_res = df_main_res.drop(columns=['pce'])
+
 
     # Generate formatted LaTeX table
     output_file = f'tables/graph_estimation_results_N{N}.tex'

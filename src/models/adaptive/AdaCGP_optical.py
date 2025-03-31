@@ -136,9 +136,6 @@ class AdaCGP:
                             if t > self._patience:
                                 patience_left -= 1
 
-                        if patience_left == 0:
-                            break
-
                     # Psi loss update
                     psi_loss = 0.5 * (self._lambda * psi_loss + torch.norm(yt - torch.matmul(self.Psi, xPt))**2)
                     results['psi_losses'].append(psi_loss.item())
@@ -195,7 +192,8 @@ class AdaCGP:
                                 gradient_function_psi_mlms,
                                 Psi_unpacked[:, p, :].flatten().cpu(),
                                 -direction_unpacked[:, p, :].flatten().cpu(),
-                                args=(self.Psi.clone().cpu(), mus_pt.cpu(), self.R0.cpu(), self.P0.cpu(), self._gamma, p, include_comm_term, self.N, self._P, self._lambda, xPt.cpu(), yt.cpu(), psi_loss.cpu())
+                                args=(self.Psi.clone().cpu(), mus_pt.cpu(), self.R0.cpu(), self.P0.cpu(), self._gamma, p, include_comm_term, self.N, self._P, self._lambda, xPt.cpu(), yt.cpu(), psi_loss.cpu()),
+                                maxiter=50
                             )
                             if alpha[0] is None:
                                 A[p, p] = self._psi_stepsize
@@ -235,6 +233,9 @@ class AdaCGP:
                         # Compute gradient
                         Psi_1 = Psi_unpacked[:, 0, :]
                         V = self.W - (Psi_1 - self._gamma * S)
+                        if self._project_to_weight_matrix:
+                            mask_W = (weight_matrix != 0).float()
+                            V[mask_W == 0] = 0
                         M_1 = self.ones_NxN * mus_pt[0] / (torch.linalg.norm(xPt[:self.N], ord=2)**2 + self._epsilon)
 
                         ######## ARMIJO STEPSIZE #######
@@ -243,7 +244,8 @@ class AdaCGP:
                             gradient_function_wstep2_lms,
                             self.W.flatten().cpu(),
                             -V.flatten().cpu(),
-                            args=(self.Psi.clone().cpu(), mus_pt.cpu(), self._gamma, self.N, self._P)
+                            args=(self.Psi.clone().cpu(), mus_pt.cpu(), self._gamma, self.N, self._P),
+                            maxiter=50
                         )
                         w_stepsize = alpha[0]
                         if alpha[0] is None:
@@ -258,7 +260,44 @@ class AdaCGP:
                     else:
                         Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
                         self.W = Psi_unpacked[:, 0, :]
-            
+
+                    ############################################
+                    ############### DEBIASING W ################
+                    ############################################
+
+                    debiasing_W = (self.W.clone() != 0).float()
+
+                    # compute G without the regularisation terms
+                    G = torch.matmul(self.Psi, self.R0) - self.P0
+
+                    # apply mask
+                    masks = [torch.matrix_power(debiasing_W, i+1) for i in range(self._P)]
+                    mask = pack_graph_filters(masks, self.N, self._P)
+                    G[mask == 0] = 0
+    
+                    if self.use_armijo and (t > self._warm_up_steps):
+                        # Line search
+                        Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
+                        direction_unpacked = get_each_graph_filter(G, self.N, self._P)
+                        for p in range(0, self._P):
+                            alpha = line_search(
+                                objective_function_psi_mlms,
+                                gradient_function_psi_mlms,
+                                Psi_unpacked[:, p, :].flatten().cpu(),
+                                -direction_unpacked[:, p, :].flatten().cpu(),
+                                args=(self.Psi.clone().cpu(), mus_pt.cpu(), self.R0.cpu(), self.P0.cpu(), self._gamma, p, include_comm_term, self.N, self._P, self._lambda, xPt.cpu(), yt.cpu(), psi_loss.cpu()),
+                                maxiter=50
+                            )
+                            if alpha[0] is None:
+                                A[p, p] = self._psi_stepsize
+                            else:
+                                A[p, p] = alpha[0] / (torch.linalg.norm(xPt[p*self.N:(p+1)*self.N], ord=2) + self._epsilon)
+
+                    # Update parameters
+                    self.Psi = self.Psi - torch.matmul(G, torch.kron(A, self.eye_N))
+                    Psi_unpacked = get_each_graph_filter(self.Psi, self.N, self._P)
+                    self.W = Psi_unpacked[:, 0, :] * debiasing_W
+
                     ############################################
                     ########### COMPUTE FILTER COEFS ###########
                     ############################################
@@ -289,7 +328,8 @@ class AdaCGP:
                         gradient_function_h_lms,
                         self.h.flatten().cpu(),
                         -h_g.flatten().cpu(),
-                        args=(Ys.cpu(), yt.cpu(), self._lambda, self.C.cpu(), self.u.cpu(), self._instant_h, nu_t.cpu(), self._epsilon)
+                        args=(Ys.cpu(), yt.cpu(), self._lambda, self.C.cpu(), self.u.cpu(), self._instant_h, nu_t.cpu(), self._epsilon),
+                        maxiter=50
                     )
                     h_stepsize = alpha[0]
                     if alpha[0] is None:

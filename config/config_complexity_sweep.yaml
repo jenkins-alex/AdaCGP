@@ -16,8 +16,10 @@ hydra:
   
     params:
       seed: choice(1, 2, 3)
-      data.N: choice(10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500)
-      model: choice(adacgp_numpy_p1, adacgp_numpy_p2, sdsem, tiso, tirso, var)
+      data.N: choice(250, 500, 750, 1000, 2500) # ) # 10, 25, 50, 75, 100
+      # model: choice(granger)
+      # model: choice(adacgp_numpy_p1, adacgp_numpy_p2, sdsem, tiso, tirso, var)
+      model: choice(glasso)
 
 device: cpu
 data_seed: 42

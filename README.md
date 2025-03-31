@@ -1,6 +1,6 @@
 # AdaCGP: Online Graph Learning via Time-Vertex Adaptive Filters
 
-This repository contains the official implementation of AdaCGP (Adaptive Constrained Graph Process), an online algorithm for adaptive estimation of the Graph Shift Operator (GSO) from multivariate time series.
+This repository contains the code for AdaCGP (Adaptive Causal Graph Process), an online algorithm for adaptive estimation of the Graph Shift Operator (GSO) from multivariate time series.
 
 [![arXiv](https://img.shields.io/badge/arXiv-2411.01567-b31b1b.svg)](https://arxiv.org/abs/2411.01567)
 

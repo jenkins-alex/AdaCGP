@@ -125,7 +125,7 @@ def plot_unified_complexity_analysis(results_df, output_path='figures/unified_co
         N value to use for the bottom row analysis
     """
     # Create figure with 2 rows, 2 columns
-    fig, axs = plt.subplots(2, 2, figsize=(7, 6))
+    fig, axs = plt.subplots(2, 2, figsize=(6, 6))
     
     # Get unique models
     models = results_df['model'].unique()
@@ -138,22 +138,44 @@ def plot_unified_complexity_analysis(results_df, output_path='figures/unified_co
     cmap_blue = plt.get_cmap('Blues')
     cmap_red = plt.get_cmap('Reds')
     
-    markers = {'AdaCGP_P1': 's', 'AdaCGP_P2': '^', 'SDSEM': 'o', 'TISO': 'D', 'TIRSO': 'X', 'VAR': 'P'}
+    # Updated markers and colors
+    markers = {'AdaCGP_P1': 's', 'AdaCGP_P2': '^', 'SDSEM': 'o', 'TISO': 'D', 'TIRSO': 'D', 
+               'VAR': 'X', 'GrangerVAR': 'p', 'GLasso': 'h', 'GLSigRep': 'v'}
+    
     colors = {
         'AdaCGP_P1': cmap_blue((50+10) / 90), 
         'AdaCGP_P2': cmap_red((50+10) / 90),
-        'SDSEM': '#FF8C00',       # Distinct green
-        'TISO': '#9370DB',        # Medium purple - changed from the pinkish color
-        'TIRSO': '#4B0082',       # Indigo - darker to distinguish from TISO
-        'VAR': '#00A36C'          # Dark orange
+        'SDSEM': '#FF8C00',       # Orange
+        'TISO': '#9370DB',        # Medium purple
+        'TIRSO': '#4B0082',       # Indigo
+        'VAR': '#75B87F',         # Light green
+        'GrangerVAR': '#2E8B57',  # Dark green (Sea Green)
+        'GLasso': '#8B008B',      # Dark magenta
+        'GLSigRep': '#8B4513'     # Brown (Saddle Brown)
     }
+    
     display_labels = {
         'AdaCGP_P1': 'AdaCGP (P1)',
         'AdaCGP_P2': 'AdaCGP (P2)',
         'SDSEM': 'SD-SEM',
         'TISO': 'TISO',
         'TIRSO': 'TIRSO',
-        'VAR': 'VAR'
+        'VAR': 'VAR',
+        'GrangerVAR': 'VAR + Granger',
+        'GLasso': 'GLasso',
+        'GLSigRep': 'GL-SigRep'
+    }
+    
+    line_styles = {
+        'AdaCGP_P1': '-',
+        'AdaCGP_P2': '-',
+        'SDSEM': '-',
+        'TISO': '-',
+        'TIRSO': '-',
+        'VAR': '--',
+        'GrangerVAR': '--',
+        'GLasso': '--',
+        'GLSigRep': '--'
     }
     
     # PART 1: Top row - Complexity vs N
@@ -192,14 +214,14 @@ def plot_unified_complexity_analysis(results_df, output_path='figures/unified_co
         memory_means = np.array(memory_means)[sort_indices]
         
         # Plot iteration time vs N
-        axs[0, 0].plot(n_values, time_means, label=display_labels[model],
+        axs[0, 0].plot(n_values, time_means, label=display_labels[model], linestyle=line_styles[model],
                    marker=markers.get(model, 'o'), color=colors[model],
-                   markersize=6, markeredgecolor='black', markeredgewidth=0.5, linewidth=1.5)
+                   markersize=6 if 'Ada' in model else 5, markeredgecolor='black', markeredgewidth=0.5, linewidth=1.5, alpha=1 if 'Ada' in model else 0.5)
         
         # Plot iteration memory vs N
-        axs[1, 0].plot(n_values, memory_means, label=display_labels[model],
+        axs[1, 0].plot(n_values, memory_means, label=display_labels[model], linestyle=line_styles[model],
                    marker=markers.get(model, 'o'), color=colors[model],
-                   markersize=6, markeredgecolor='black', markeredgewidth=0.5, linewidth=1.5)
+                   markersize=6 if 'Ada' in model else 5, markeredgecolor='black', markeredgewidth=0.5, linewidth=1.5, alpha=1 if 'Ada' in model else 0.5)
     
     # PART 2: Bottom row - Complexity vs time steps
     # Get all time steps (from column names)
@@ -238,14 +260,14 @@ def plot_unified_complexity_analysis(results_df, output_path='figures/unified_co
                 memory_means.append(np.nan)
         
         # Plot iteration time vs time steps
-        axs[0, 1].plot(time_steps, time_means, label=f"{model.upper()}", 
+        axs[0, 1].plot(time_steps, time_means, label=f"{model.upper()}", linestyle=line_styles[model],
                    marker=markers.get(model, 'o'), color=colors[model],
-                   markersize=6, markeredgecolor='black', markeredgewidth=0.5, linewidth=1.5)
+                   markersize=6 if 'Ada' in model else 5, markeredgecolor='black', markeredgewidth=0.5, linewidth=1.5, alpha=1 if 'Ada' in model else 0.5)
         
         # Plot iteration memory vs time steps
-        axs[1, 1].plot(time_steps, memory_means, label=f"{model.upper()}",
+        axs[1, 1].plot(time_steps, memory_means, label=f"{model.upper()}", linestyle=line_styles[model],
                    marker=markers.get(model, 'o'), color=colors[model],
-                   markersize=6, markeredgecolor='black', markeredgewidth=0.5, linewidth=1.5)
+                   markersize=6 if 'Ada' in model else 5, markeredgecolor='black', markeredgewidth=0.5, linewidth=1.5, alpha=1 if 'Ada' in model else 0.5)
     
     # Configure top-left plot (Iteration Time vs N)
     axs[0, 0].set_xlabel('N')
@@ -286,7 +308,7 @@ def plot_unified_complexity_analysis(results_df, output_path='figures/unified_co
     by_label = dict(zip(labels, handles))
     
     available_models = results_df['model'].unique()
-    model_order = ['AdaCGP_P1', 'AdaCGP_P2', 'VAR', 'SDSEM', 'TISO', 'TIRSO']
+    model_order = ['AdaCGP_P1', 'AdaCGP_P2', 'TISO', 'TIRSO', 'SDSEM', 'GLasso', 'VAR', 'GrangerVAR', 'GLSigRep']
 
     ordered_labels = [display_labels[model] for model in model_order if model in available_models]
     ordered_handles = [by_label[label] for label in ordered_labels if label in by_label]
@@ -296,7 +318,7 @@ def plot_unified_complexity_analysis(results_df, output_path='figures/unified_co
         ordered_handles, 
         ordered_labels, 
         loc='lower center', 
-        ncol=3, 
+        ncol=5, 
         bbox_to_anchor=(0.5, 0.01), 
         bbox_transform=fig.transFigure,
         frameon=True,
@@ -313,4 +335,3 @@ if __name__ == "__main__":
     fig, axs = plot_unified_complexity_analysis(results_df, output_path='figures/unified_complexity_analysis.svg', 
                                             time_step=9000, selected_N=50)
     plt.show()
-
