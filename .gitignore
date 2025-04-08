@@ -2,6 +2,7 @@ logs/*
 launch.json
 settings.json
 figures/*
+tables/*
 *.ipynb_checkpoints/*
 *.pyc
 *.pyo
