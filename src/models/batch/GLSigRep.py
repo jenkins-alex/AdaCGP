@@ -153,26 +153,29 @@ class GLSigRep:
             # Create duplication matrix
             M_dup = self._create_duplication_matrix(n)
             M_dup_T = M_dup.T
+            M_dup_T_M_dup = M_dup_T @ M_dup  # precompute
             
             # Compute YY^T
             YYT = Y @ Y.T
             vec_YYT = YYT.flatten()
+            M_dup_T_vec_YYT = M_dup_T @ vec_YYT  # precompute
+            vec_YYTT_M_dup = vec_YYT.T @ M_dup  # precompute
             
             # the objective function: α vec(YY^T)^T M_dup vech(L) + β vech(L)^T M_dup^T M_dup vech(L)
             def objective(vech_L):
-                term1 = alpha * vec_YYT.T @ M_dup @ vech_L
-                term2 = beta * vech_L.T @ M_dup_T @ M_dup @ vech_L
+                term1 = alpha * vec_YYTT_M_dup @ vech_L
+                term2 = beta * vech_L.T @ M_dup_T_M_dup @ vech_L
                 return term1 + term2
             
             # gradient of the objective function
             def gradient(vech_L):
-                return alpha * M_dup_T @ vec_YYT + 2 * beta * M_dup_T @ M_dup @ vech_L
+                return alpha * M_dup_T_vec_YYT + 2 * beta * M_dup_T_M_dup @ vech_L
             
             # valid initial Laplacian matrix
             L_init = self._create_laplacian(n)
             vech_L_init = self._matrix_to_vech(L_init)
             vech_size = len(vech_L_init)
-            
+
             # get indices for diagonal and off-diagonal elements
             diag_indices = self._get_diagonal_indices(n)
             offdiag_indices = self._get_off_diagonal_indices(n)
