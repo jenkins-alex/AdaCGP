@@ -145,11 +145,7 @@ python generate_sparsity_results_figures.py
 
 ### 4. Ventricular Fibrillation Data Analysis
 
-Analyze real-world ventricular fibrillation (VF) data with AdaCGP:
-
-```bash
-python experiments/run_vf_analysis.py --data_path data/vf_recordings/ --drug flecainide
-```
+Our analysis of real-world ventricular fibrillation (VF) data with AdaCGP is given in optical_revisions.ipynb
 
 This experiment demonstrates AdaCGP's ability to track changes in graph structure in response to an anti-arrhythmic drug, identifying the stability of critical conduction patterns that may be maintaining cardiac arrhythmia.
 
